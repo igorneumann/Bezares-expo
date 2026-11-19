@@ -1,0 +1,60 @@
+# Informe de seguridad – Expo Bezares
+
+Revisión manual del código completo (PHP, JS, `.htaccess`), 19/11/2026. Es una revisión estática: no se ha hecho
+todavía una prueba de penetración contra el servidor real (ver "Pendiente" al final).
+
+## Medidas implementadas
+
+| Área | Medida |
+|---|---|
+| Acceso a la web | Sin la cookie `expo_device`, todas las peticiones (incluidos medios estáticos) se redirigen a bezares.com desde el `.htaccess`, y además desde PHP. Excepciones: `/.well-known/` (SSL), `/cookie.html` y `/cookie.php`. |
+| Cookie de dispositivo | Token aleatorio de 192 bits, `HttpOnly`, `Secure`, `SameSite=Lax`. Se obtiene con un código de acceso (hash bcrypt, mín. 6 caracteres, 10 intentos / 15 min por IP). Se puede revocar para todos los dispositivos. |
+| Instalador | Exige una clave de un solo uso guardada en la carpeta de datos (sólo accesible por FTP / Administrador de archivos) y se desactiva al terminar. |
+| Contraseñas | `password_hash` (bcrypt), mín. 10 caracteres, rehash automático. Bloqueo: 5 fallos por usuario / 10 por IP en 15 min. Mensajes genéricos (no revelan si el usuario existe) y hash ficticio para igualar tiempos. |
+| Sesión | Cookie `HttpOnly` + `Secure` + `SameSite=Strict`, `use_strict_mode`, ID regenerado al entrar, caducidad por inactividad (2 h), sesiones guardadas fuera de `/tmp` compartido. |
+| "Mantener sesión" | Tokens selector/validador (validador guardado como SHA‑256), rotación en cada uso, invalidación total si se detecta reutilización, 30 días. |
+| Recuperar contraseña | Token de 256 bits guardado como hash, 1 h, un solo uso, invalida los "mantener sesión". El enlace usa la URL canónica de configuración (no la cabecera `Host`). Límite de 5 solicitudes/h por IP. |
+| CSRF | Token por sesión en formularios y en la cabecera `X-CSRF-Token` de la API, comprobación de `Origin`, cookies `SameSite=Strict`. |
+| Inyección SQL | Todas las consultas con parámetros preparados (PDO, sin emulación). |
+| XSS | Todo el HTML del servidor se escapa con `htmlspecialchars`; el panel construye el DOM sin `innerHTML`. CSP estricta (`script-src 'self'`, sin `unsafe-inline` para scripts; el import map usa hash). |
+| Subidas | Lista blanca de extensiones por tipo, comprobación del contenido real (cabeceras mágicas / `getimagesize`), nombres saneados sin dobles extensiones, SVG con contenido activo rechazado, subida por trozos con secuencia validada y límite de tamaño. |
+| Carpeta `/media` | Nunca ejecuta código (`RemoveHandler`, denegación de `.php/.phtml/.phar/.html/.js…`), `nosniff`, CSP `sandbox` si se abre un fichero directamente. |
+| Ficheros internos | Todo está en `httpdocs` (despliegue Plesk Git), con tres capas: `app/.htaccess` (`Require all denied`), reglas del `/.htaccess` generado (`app/`, ficheros ocultos, `.md`, `.sqlite`, `.log`, `.key`…) y directivas nginx propuestas. Cada PHP interno aborta si se ejecuta directamente. Los datos van a la carpeta `private` de Plesk (fuera de la web) cuando existe. |
+| `.htaccess` y Git | `/.htaccess` no se versiona (contiene el token); se genera desde `app/htaccess.template` y se regenera solo si falta o cambia, así un despliegue nunca lo deja sin protección ni con un token antiguo. |
+| Autodiagnóstico | Botón *Verificar seguridad*: el servidor se pide a sí mismo las rutas internas con la cookie (incluido un fichero testigo aleatorio) y comprueba la puerta sin cookie en páginas y estáticos. |
+| Cabeceras | CSP, HSTS, `X-Frame-Options: DENY` + `frame-ancestors 'none'`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `COOP`, `X-Robots-Tag: noindex`. |
+| Redirecciones | Las URLs de redirección se construyen a partir de valores validados (sin redirecciones abiertas ni inyección de cabeceras). |
+| Clave OpenAI | Guardada en el servidor, nunca se envía al navegador. Texto de traducción tratado como datos en el prompt. Límite de 60 traducciones/h por usuario. |
+| Errores | `display_errors` desactivado; errores en `app/data/logs/`. Registro de accesos, fallos de login, autorizaciones de dispositivos y cambios de configuración en `app.log`. |
+
+## Problemas detectados durante la revisión y corregidos
+
+1. **Inyección de cabecera `Host` en el email de recuperación**: el enlace se construía con `HTTP_HOST`. → Ahora usa `public_url` de configuración.
+2. **Expresión regular de rutas aceptaba un salto de línea final** (`$` sin modificador `D`) y la redirección reutilizaba la ruta del usuario. → Modificador `D` y redirección construida con el prefijo y el número validados.
+3. **Doble extensión en nombres de fichero** (`x.php.jpg`). → El nombre base ya no admite puntos.
+4. **Instalador accesible para cualquiera** hasta completarse (riesgo de que un tercero cree el administrador). → Clave de instalación de un solo uso + límite de intentos.
+5. **Código y datos dentro de `httpdocs` expuestos si nginx sirve estáticos.** → `app/.htaccess` propio, directivas nginx con `if … return 403` (se aplican antes que las `location` de PHP de Plesk), guardas en los PHP internos, datos en `private/` cuando existe y verificación automática desde el panel.
+6. **Errores de PDO podían devolverse al navegador** (PDOException es RuntimeException). → Se capturan aparte y se devuelve un mensaje genérico.
+7. **Código de acceso de dispositivos de 4 caracteres** demasiado corto. → Mínimo 6.
+
+## Riesgos residuales / recomendaciones
+
+- **nginx en Plesk**: si "Servir ficheros estáticos directamente mediante nginx" está activo, el `.htaccess` no protege `/media`. Desactívalo y/o pega las directivas nginx del panel. **Comprobar tras desplegar** (ver abajo).
+- La cookie de dispositivo es la misma para todos los tablets: si se pierde uno, revoca todos.
+- El bloqueo por intentos fallidos permite a alguien con acceso de dispositivo bloquear temporalmente (15 min) un usuario conociendo su nombre.
+- Usa un código de acceso largo (8+ caracteres) y contraseñas únicas.
+- Mantén PHP actualizado desde Plesk.
+
+## Pendiente: verificación en el servidor real
+
+La mayor parte se comprueba con *Configuración > 🛡 Verificar seguridad*. Además, a mano:
+
+Tras desplegar, comprobar desde un navegador **sin** cookie (ventana privada):
+
+- `https://expo.bezares.com/` → redirige a bezares.com
+- `https://expo.bezares.com/media/photos/<una-foto>.jpg` → redirige a bezares.com (si se ve la foto, nginx está sirviendo estáticos: ver arriba)
+- `https://expo.bezares.com/.well-known/acme-challenge/x` → 404 del servidor (no redirige)
+- `https://expo.bezares.com/cookie.html` → se muestra
+- `https://expo.bezares.com/install.php` → 404
+- `https://expo.bezares.com/.htaccess` y `/_boot.php` → 403/redirección
+- Comprobar las cabeceras en https://securityheaders.com (con un dispositivo autorizado no es posible desde fuera: aceptable que muestre la redirección).

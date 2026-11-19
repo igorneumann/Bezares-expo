@@ -1,0 +1,13 @@
+{
+  "name": "Bezares Expo",
+  "short_name": "Bezares Expo",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#00567D",
+  "icons": [
+    { "src": "/assets/icon-250.png", "sizes": "250x250", "type": "image/png", "purpose": "any" }
+  ]
+}

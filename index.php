@@ -1,0 +1,41 @@
+<?php
+declare(strict_types=1);
+
+require __DIR__ . '/_boot.php';
+
+gate_require();
+
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+if ($method !== 'GET' && $method !== 'HEAD') {
+    http_response_code(405);
+    header('Allow: GET, HEAD');
+    exit;
+}
+
+if (setting('installed') !== '1') {
+    header('Location: /install.php');
+    exit;
+}
+
+$path = (string)parse_url((string)($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
+$path = trim(rawurldecode($path), '/');
+
+if ($path === '' || $path === 'index.php') {
+    render_index();
+    exit;
+}
+
+$prefix = (string)setting('url_prefix', 'bbm-t');
+// Modificador D: "$" no acepta un salto de línea final (evita inyección en cabeceras).
+if (preg_match('/^(.+?)(\d{1,3})([a-e])?$/iD', $path, $m) && strcasecmp($m[1], $prefix) === 0) {
+    // Normaliza a la URL con barra final (canónica, evita duplicados en caché).
+    $uri = (string)($_SERVER['REQUEST_URI'] ?? '');
+    if (!str_ends_with((string)parse_url($uri, PHP_URL_PATH), '/')) {
+        header('Location: /' . rawurlencode($prefix . $m[2] . strtolower($m[3] ?? '')) . '/', true, 301);
+        exit;
+    }
+    render_tablet((int)$m[2], isset($m[3]) && $m[3] !== '' ? $m[3] : null);
+    exit;
+}
+
+not_found();
