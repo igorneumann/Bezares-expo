@@ -18,9 +18,10 @@ if (!in_array($method, ['GET', 'POST'], true)) {
     exit;
 }
 
-// Antes de instalar no hay token válido que entregar.
+// Antes de instalar no hay token válido que entregar: llevar al instalador
+// (protegido por su clave de un solo uso) en lugar de a bezares.com.
 if (setting('installed') !== '1') {
-    header('Location: ' . CFG['redirect_url'], true, 302);
+    header('Location: /install.php', true, 302);
     exit;
 }
 
