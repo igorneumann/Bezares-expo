@@ -216,6 +216,9 @@ summary { cursor: pointer; font-weight: 600; color: var(--blue); }
 .info-preview-body { padding: 8px 12px; }
 .info-preview-body ul { margin: 4px 0 0; padding-left: 1.2em; }
 
+.scan-report ul { max-height: 30vh; overflow: auto; padding-left: 1.2em; font-size: .85rem; }
+.scan-report h4 { margin: 12px 0 4px; }
+
 /* Eventos */
 .event-list { display: grid; gap: 12px; }
 .event-card { margin: 0; }

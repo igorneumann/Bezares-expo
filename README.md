@@ -114,7 +114,10 @@ Enlace en el pie de la página principal → `/admin/` (usuario/contraseña, "Ma
   con ChatGPT (editables), modelo 3D, foto principal (si no hay 3D), vídeo (galería o YouTube) y fotos adicionales
   con tamaño pequeño / mediano / grande.
 - **Galería**: Vídeos, Modelos 3D (GLB, glTF, OBJ, STEP/STP; posición, tamaño, luminosidad, sombra y velocidad de giro
-  con vista previa en vivo) y Fotos. Botón **Escanear carpeta FTP** para registrar lo subido por FTP a `/media` y subcarpetas.
+  con vista previa en vivo) y Fotos. Botón **Escanear carpeta FTP**: registra lo subido por FTP a `/media` (cualquier
+  subcarpeta) y **mueve todos los medios, también los ya importados, a su carpeta**: `media/videos/`, `media/photos/`,
+  `media/models/` (GLB) y `media/models/_sources/` (originales STEP; los glTF/OBJ en una carpeta propia con sus .bin,
+  .mtl y texturas). Las carpetas de importación que quedan vacías se eliminan y se listan los ficheros que sobran.
   Casillas de selección y "Seleccionar todo" para eliminar varios ficheros a la vez.
 - **Eventos**: guarda la configuración de los tablets de cada feria (tablets activos, productos, orden, flechas,
   fotos, idiomas y título del evento) y restáurala más tarde (con copia automática de la configuración actual).

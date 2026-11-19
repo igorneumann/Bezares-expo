@@ -328,7 +328,8 @@ function media_scan(): array
             continue;
         }
         $files[] = $f;
-        if (media_ext($f->getFilename()) === 'gltf') {
+        // Carpetas con modelos glTF/OBJ: sus imágenes son texturas, no fotos de la galería.
+        if (in_array(media_ext($f->getFilename()), ['gltf', 'obj', 'mtl'], true)) {
             $gltfDirs[$f->getPath()] = true;
         }
     }
@@ -353,19 +354,294 @@ function media_scan(): array
         }
     }
     $added = (int)db()->query('SELECT COUNT(*) FROM media')->fetchColumn() - $before;
-    // Marcar medios cuyo fichero ya no existe.
+
+    // Mover cada elemento (también los ya importados) a su carpeta correcta.
+    $org = media_organize();
+
+    // Marcar medios cuyo fichero ya no existe (y recuperar los que vuelven a estar).
     $missing = 0;
-    foreach (db()->query('SELECT id, path FROM media')->fetchAll() as $m) {
+    foreach (db()->query('SELECT id, path, kind, status FROM media')->fetchAll() as $m) {
         $abs = media_abs($m['path']);
         if (!$abs || !is_file($abs)) {
             db()->prepare("UPDATE media SET status = 'missing' WHERE id = ?")->execute([$m['id']]);
             $missing++;
+        } elseif ($m['status'] === 'missing') {
+            $st = ($m['kind'] === 'model' && media_ext($m['path']) !== 'glb') ? 'needs_conversion' : 'ready';
+            db()->prepare('UPDATE media SET status = ? WHERE id = ?')->execute([$st, $m['id']]);
         }
     }
-    if ($added || $updated) {
+    if ($added || $updated || $org['moved'] || $org['bundled']) {
         bump_content_version();
     }
-    return ['added' => $added, 'updated' => $updated, 'missing' => $missing, 'skipped' => array_slice($skipped, 0, 50)];
+    return ['added' => $added, 'updated' => $updated, 'missing' => $missing, 'skipped' => array_slice($skipped, 0, 50)] + $org;
+}
+
+// ---------------------------------------------------------------------------
+// Organización de carpetas
+//   media/videos/            vídeos
+//   media/photos/            fotos (se admiten subcarpetas)
+//   media/models/            modelos GLB (y models/_converted/ para los convertidos)
+//   media/models/_sources/   originales: STEP sueltos; glTF/OBJ en su propia carpeta con
+//                            sus .bin, .mtl y texturas (referencias reescritas)
+// Tras organizar se borran las carpetas de importación que hayan quedado vacías.
+// ---------------------------------------------------------------------------
+
+const MEDIA_SOURCES = 'models/_sources';
+
+function media_under(string $rel, string $folder): bool
+{
+    return str_starts_with($rel, media_rel_prefix() . trim($folder, '/') . '/');
+}
+
+/** Mueve (o copia) un fichero de /media a una carpeta de /media con nombre libre. Devuelve la ruta relativa nueva. */
+function media_move_file(string $fromAbs, string $toFolderRel, ?string $name = null, bool $copy = false): ?string
+{
+    $dir = PUBLIC_ROOT . '/' . rtrim($toFolderRel, '/');
+    if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
+        return null;
+    }
+    $rel = media_unique_path($toFolderRel, $name ?? basename($fromAbs));
+    $ok = $copy ? @copy($fromAbs, PUBLIC_ROOT . '/' . $rel) : @rename($fromAbs, PUBLIC_ROOT . '/' . $rel);
+    if (!$ok) {
+        return null;
+    }
+    if ($copy) {
+        @touch(PUBLIC_ROOT . '/' . $rel, (int)filemtime($fromAbs));
+    }
+    @chmod(PUBLIC_ROOT . '/' . $rel, 0644);
+    return $rel;
+}
+
+/** Ruta absoluta de un recurso referenciado por un modelo, sólo si está dentro de /media. */
+function media_companion_abs(string $baseDirAbs, string $ref): ?string
+{
+    $ref = trim(rawurldecode(str_replace('\\', '/', $ref)));
+    if ($ref === '' || preg_match('~^(data:|[a-z][a-z0-9+.-]*://|/)~i', $ref)) {
+        return null;
+    }
+    $abs = realpath($baseDirAbs . '/' . $ref);
+    $root = realpath(media_root());
+    return ($abs && $root && str_starts_with($abs, $root . DIRECTORY_SEPARATOR) && is_file($abs)) ? $abs : null;
+}
+
+/**
+ * Copia un modelo glTF/OBJ y sus ficheros asociados a una carpeta propia en _sources,
+ * reescribiendo las referencias. Devuelve la nueva ruta del modelo o null.
+ * $copied recibe los ficheros originales copiados (para borrarlos al final).
+ */
+function media_bundle_model(string $srcRel, array &$copied, array &$errors): ?string
+{
+    $abs = media_abs($srcRel);
+    if (!$abs || !is_file($abs)) {
+        return null;
+    }
+    $ext = media_ext($srcRel);
+    $baseDir = dirname($abs);
+    $bundleBase = media_rel_prefix() . MEDIA_SOURCES . '/' . slugify(pathinfo($srcRel, PATHINFO_FILENAME));
+    $bundle = $bundleBase;
+    for ($i = 1; is_dir(PUBLIC_ROOT . '/' . $bundle); $i++) {
+        $bundle = $bundleBase . '-' . $i;
+    }
+    if (!@mkdir(PUBLIC_ROOT . '/' . $bundle, 0755, true)) {
+        $errors[] = 'No se pudo crear ' . $bundle;
+        return null;
+    }
+    $names = []; // origen absoluto => nombre nuevo dentro del paquete
+    $place = static function (string $compAbs) use (&$names, &$copied, $bundle): ?string {
+        if (isset($names[$compAbs])) {
+            return $names[$compAbs];
+        }
+        $rel = media_move_file($compAbs, $bundle, sanitize_filename(basename($compAbs)), true);
+        if ($rel === null) {
+            return null;
+        }
+        $copied[$compAbs] = true;
+        return $names[$compAbs] = basename($rel);
+    };
+
+    if ($ext === 'gltf') {
+        $json = json_decode((string)file_get_contents($abs), true);
+        if (!is_array($json)) {
+            $errors[] = $srcRel . ': glTF no válido';
+            return null;
+        }
+        foreach (['buffers', 'images'] as $k) {
+            foreach ($json[$k] ?? [] as $i => $item) {
+                $uri = is_array($item) ? (string)($item['uri'] ?? '') : '';
+                if ($uri === '' || str_starts_with($uri, 'data:')) {
+                    continue;
+                }
+                $c = media_companion_abs($baseDir, $uri);
+                $new = $c ? $place($c) : null;
+                if ($new === null) {
+                    $errors[] = $srcRel . ': falta ' . $uri;
+                    continue;
+                }
+                $json[$k][$i]['uri'] = rawurlencode($new);
+            }
+        }
+        $out = PUBLIC_ROOT . '/' . media_unique_path($bundle, sanitize_filename(basename($abs)));
+        file_put_contents($out, json_encode($json, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    } else { // obj
+        $obj = (string)file_get_contents($abs);
+        $mtlMap = []; // referencia original en el OBJ => nombre nuevo del .mtl
+        preg_match_all('/^\s*mtllib\s+(.+?)\s*$/mi', $obj, $libs);
+        foreach (array_unique($libs[1]) as $ref) {
+            $c = media_companion_abs($baseDir, $ref);
+            if (!$c) {
+                $errors[] = $srcRel . ': falta ' . $ref;
+                continue;
+            }
+            // Texturas del .mtl: se copian al paquete y se reescribe la ruta.
+            $mtlDir = dirname($c);
+            $mtl = preg_replace_callback('/^(\s*(?:map_\w+|bump|disp|decal|refl|norm)\s+(?:.*\s)?)(\S+)\s*$/mi',
+                static function ($t) use ($mtlDir, $place, &$errors, $srcRel) {
+                    $tc = media_companion_abs($mtlDir, $t[2]);
+                    $new = $tc ? $place($tc) : null;
+                    if ($new === null) {
+                        $errors[] = $srcRel . ': falta la textura ' . $t[2];
+                        return $t[0];
+                    }
+                    return $t[1] . $new;
+                }, (string)file_get_contents($c)) ?? '';
+            $mtlRel = media_unique_path($bundle, sanitize_filename(basename($c)));
+            file_put_contents(PUBLIC_ROOT . '/' . $mtlRel, $mtl);
+            $copied[$c] = true;
+            $mtlMap[$ref] = basename($mtlRel);
+        }
+        $obj = preg_replace_callback('/^(\s*mtllib\s+)(.+?)\s*$/mi',
+            static fn($m) => isset($mtlMap[$m[2]]) ? $m[1] . $mtlMap[$m[2]] : $m[0], $obj) ?? $obj;
+        $out = PUBLIC_ROOT . '/' . media_unique_path($bundle, sanitize_filename(basename($abs)));
+        file_put_contents($out, $obj);
+    }
+    @touch($out, (int)filemtime($abs));
+    @chmod($out, 0644);
+    $copied[$abs] = true;
+    return media_rel_prefix() . ltrim(substr(str_replace('\\', '/', $out), strlen(str_replace('\\', '/', media_root()))), '/');
+}
+
+function media_organize(): array
+{
+    $pdo = db();
+    $moved = 0;
+    $bundled = 0;
+    $errors = [];
+    $copied = [];
+    $upd = static function (int $id, string $col, string $rel) use ($pdo): void {
+        $pdo->prepare("UPDATE media SET {$col} = ? WHERE id = ?")->execute([$rel, $id]);
+    };
+
+    foreach ($pdo->query('SELECT * FROM media ORDER BY id')->fetchAll() as $m) {
+        $id = (int)$m['id'];
+        // 1) Fichero principal
+        $abs = media_abs($m['path']);
+        if ($abs && is_file($abs)) {
+            $ext = media_ext($m['path']);
+            if ($m['kind'] === 'video' && !media_under($m['path'], 'videos')) {
+                $target = 'videos';
+            } elseif ($m['kind'] === 'photo' && !media_under($m['path'], 'photos')) {
+                $target = 'photos';
+            } elseif ($m['kind'] === 'model' && $ext === 'glb' && (!media_under($m['path'], 'models') || media_under($m['path'], MEDIA_SOURCES))) {
+                $target = 'models';
+            } elseif ($m['kind'] === 'model' && $ext !== 'glb' && !media_under($m['path'], MEDIA_SOURCES)) {
+                $target = MEDIA_SOURCES; // original aún sin convertir
+            } else {
+                $target = null;
+            }
+            if ($target === MEDIA_SOURCES && in_array($ext, ['gltf', 'obj'], true)) {
+                $new = media_bundle_model($m['path'], $copied, $errors);
+                if ($new) {
+                    $upd($id, 'path', $new);
+                    $bundled++;
+                }
+            } elseif ($target !== null) {
+                $new = media_move_file($abs, media_rel_prefix() . $target);
+                if ($new) {
+                    $upd($id, 'path', $new);
+                    $moved++;
+                } else {
+                    $errors[] = 'No se pudo mover ' . $m['path'];
+                }
+            }
+        }
+        // 2) Original de un modelo convertido (STEP/OBJ/glTF)
+        if ($m['source_path'] && !media_under($m['source_path'], MEDIA_SOURCES)) {
+            $sabs = media_abs($m['source_path']);
+            if ($sabs && is_file($sabs)) {
+                if (in_array(media_ext($m['source_path']), ['gltf', 'obj'], true)) {
+                    $new = media_bundle_model($m['source_path'], $copied, $errors);
+                    $bundled += $new ? 1 : 0;
+                } else {
+                    $new = media_move_file($sabs, media_rel_prefix() . MEDIA_SOURCES);
+                    $moved += $new ? 1 : 0;
+                }
+                if ($new) {
+                    $upd($id, 'source_path', $new);
+                } else {
+                    $errors[] = 'No se pudo mover ' . $m['source_path'];
+                }
+            }
+        }
+    }
+
+    // Borrar los originales copiados a los paquetes (salvo los que sigan registrados en la galería).
+    $inDb = [];
+    foreach ($pdo->query('SELECT path, source_path FROM media') as $r) {
+        foreach ([$r['path'], $r['source_path']] as $p) {
+            if ($p && ($a = media_abs($p))) {
+                $inDb[realpath($a) ?: $a] = true;
+            }
+        }
+    }
+    foreach (array_keys($copied) as $c) {
+        if (!isset($inDb[realpath($c) ?: $c])) {
+            @unlink($c);
+        }
+    }
+
+    [$removedDirs, $leftover] = media_cleanup_dirs();
+    if ($errors) {
+        log_event('organizar medios: ' . implode(' | ', array_slice($errors, 0, 20)));
+    }
+    return ['moved' => $moved, 'bundled' => $bundled, 'removed_dirs' => $removedDirs,
+            'leftover' => array_slice($leftover, 0, 50), 'organize_errors' => array_slice(array_values(array_unique($errors)), 0, 30)];
+}
+
+/** Borra carpetas de importación vacías y lista los ficheros que quedan fuera de las carpetas correctas. */
+function media_cleanup_dirs(): array
+{
+    $root = media_root();
+    $keep = array_map(static fn($f) => str_replace('\\', '/', $root . '/' . $f),
+        ['videos', 'photos', 'models', 'models/_converted', MEDIA_SOURCES, '_cache']);
+    $junk = ['.ds_store', 'thumbs.db', 'desktop.ini', '._.ds_store'];
+    $removed = 0;
+    $leftover = [];
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
+    foreach ($it as $f) {
+        /** @var SplFileInfo $f */
+        $path = str_replace('\\', '/', $f->getPathname());
+        $rel = substr($path, strlen(str_replace('\\', '/', $root)) + 1);
+        $top = explode('/', $rel)[0];
+        $canonical = in_array($top, ['videos', 'photos', 'models', '_cache'], true);
+        if ($f->isFile()) {
+            if (!$canonical && $f->getFilename() !== '.htaccess') {
+                if (in_array(strtolower($f->getFilename()), $junk, true)) {
+                    @unlink($path);
+                } else {
+                    $leftover[] = media_rel_prefix() . $rel;
+                }
+            }
+            continue;
+        }
+        if (in_array($path, $keep, true)) {
+            continue;
+        }
+        // Carpeta vacía (fuera o dentro de las carpetas correctas): se elimina.
+        if (count(scandir($path) ?: []) <= 2 && @rmdir($path)) {
+            $removed++;
+        }
+    }
+    return [$removed, $leftover];
 }
 
 function media_delete(int $id, bool $deleteFiles): void
@@ -376,9 +652,22 @@ function media_delete(int $id, bool $deleteFiles): void
     }
     if ($deleteFiles) {
         foreach ([$m['path'], $m['source_path']] as $p) {
-            if ($p && ($abs = media_abs($p)) && is_file($abs)) {
-                @unlink($abs);
+            if (!$p || !($abs = media_abs($p)) || !is_file($abs)) {
+                continue;
             }
+            // Original glTF/OBJ empaquetado en su carpeta de _sources: borrar la carpeta entera.
+            $dirRel = dirname($p);
+            if (in_array(media_ext($p), ['gltf', 'obj'], true) && media_under($p, MEDIA_SOURCES)
+                && dirname($dirRel) === media_rel_prefix() . MEDIA_SOURCES) {
+                foreach (glob(PUBLIC_ROOT . '/' . $dirRel . '/*') ?: [] as $f) {
+                    if (is_file($f)) {
+                        @unlink($f);
+                    }
+                }
+                @rmdir(PUBLIC_ROOT . '/' . $dirRel);
+                continue;
+            }
+            @unlink($abs);
         }
         foreach (glob(media_cache_dir() . "/p{$id}-*") ?: [] as $f) {
             @unlink($f);

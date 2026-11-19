@@ -692,13 +692,30 @@ function renderGallery() {
       h('span', { class: 'grow' }),
       search,
       uploadButton(k, () => render()),
-      h('button', { class: 'btn', title: 'Busca ficheros nuevos subidos por FTP a /media y sus subcarpetas', onclick: (e) => busy(e.currentTarget, async () => {
+      h('button', { class: 'btn', title: 'Busca ficheros nuevos subidos por FTP a /media y sus subcarpetas, y mueve todos los medios a su carpeta (videos, photos, models). Las carpetas de importación vacías se eliminan.', onclick: (e) => busy(e.currentTarget, async () => {
         toast('Escaneando carpeta /media…', 'info', 0);
         const r = await api('media.scan');
         state.media = r.media;
         const x = r.result;
-        toast(`Escaneo terminado: ${x.added} nuevos, ${x.updated} actualizados` + (x.missing ? `, ${x.missing} sin fichero` : '') + (x.skipped.length ? `, ${x.skipped.length} ignorados` : ''), 'ok', 7000);
+        const summary = `${x.added} nuevos, ${x.updated} actualizados, ${x.moved + x.bundled} movidos a su carpeta`
+          + (x.removed_dirs ? `, ${x.removed_dirs} carpetas vacías eliminadas` : '') + (x.missing ? `, ${x.missing} sin fichero` : '');
+        toast('Escaneo terminado: ' + summary, 'ok', 8000);
         render();
+        // Informe detallado si quedan cosas por revisar en las carpetas de importación.
+        if (x.leftover.length || x.organize_errors.length || x.skipped.length) {
+          await new Promise((resolve) => openModal(h('div', { class: 'confirm scan-report' },
+            h('h3', null, 'Escaneo y organización de carpetas'),
+            h('p', null, summary + '.'),
+            x.organize_errors.length ? [h('h4', null, 'Avisos'), h('ul', null, x.organize_errors.map((t) => h('li', null, t)))] : null,
+            x.skipped.length ? [h('h4', null, 'Ficheros no válidos (no importados)'), h('ul', null, x.skipped.map((t) => h('li', null, h('code', null, t))))] : null,
+            x.leftover.length
+              ? [h('h4', null, 'Quedan en carpetas de importación'),
+                h('p', { class: 'hint' }, 'No son medios de la galería (formato no admitido o no referenciados por ningún modelo). Revísalos y bórralos por FTP; después podrás eliminar esas carpetas.'),
+                h('ul', null, x.leftover.map((t) => h('li', null, h('code', null, t))))]
+              : h('p', { class: 'flash flash-ok' }, 'Las carpetas de importación han quedado vacías y se han eliminado.'),
+            h('div', { class: 'row-end' }, h('button', { class: 'btn btn-primary', onclick: () => closeModal() }, 'Entendido'))),
+          { wide: true, onClose: resolve }));
+        }
         const toConvert = state.media.filter((m) => m.kind === 'model' && m.status === 'needs_conversion');
         if (toConvert.length && await confirmBox(`Hay ${toConvert.length} modelo(s) STEP/OBJ/glTF pendientes de convertir a GLB (formato ligero para los tablets). ¿Convertir ahora en este navegador?`, 'Convertir')) {
           await convertMany(toConvert);
