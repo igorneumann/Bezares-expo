@@ -25,7 +25,7 @@ function db(): PDO
 
 function db_migrate(PDO $pdo): void
 {
-    if ((int)$pdo->query('PRAGMA user_version')->fetchColumn() >= 2) {
+    if ((int)$pdo->query('PRAGMA user_version')->fetchColumn() >= 3) {
         return;
     }
     // Bloqueo de escritura: evita que dos peticiones simultáneas migren a la vez.
@@ -57,6 +57,18 @@ function db_migrate_steps(PDO $pdo): void
         )');
         $pdo->exec('CREATE INDEX IF NOT EXISTS upload_usage_user ON upload_usage(user_id, ts)');
         $pdo->exec('PRAGMA user_version = 2');
+    }
+    if ($ver < 3) {
+        // v3: eventos (instantáneas de la configuración de tablets para guardar/restaurar).
+        $pdo->exec('CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            data TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            created_by TEXT NOT NULL DEFAULT \'\'
+        )');
+        $pdo->exec('PRAGMA user_version = 3');
     }
 }
 

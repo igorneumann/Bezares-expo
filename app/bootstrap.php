@@ -61,6 +61,7 @@ require APP_DIR . '/lib/media.php';
 require APP_DIR . '/lib/translate.php';
 require APP_DIR . '/lib/views.php';
 require APP_DIR . '/lib/security.php';
+require APP_DIR . '/lib/events.php';
 
 // Mantener /.htaccess sincronizado con la plantilla (necesario tras cada despliegue Git).
 gate_sync_htaccess();

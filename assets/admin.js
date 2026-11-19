@@ -11,6 +11,8 @@ const state = {
   tab: (location.hash.slice(1) || 'tablets'),
   galleryKind: 'photo',
   gallerySearch: '',
+  gallerySelected: new Set(),
+  events: [],
   settings: {}, languages: [], tablets: [], products: [], media: [], users: [], me: 0,
   tabletDrafts: new Map(),
   productDraft: null,
@@ -574,19 +576,51 @@ function renderGallery() {
   const list = state.media.filter((m) => m.kind === k && (!state.gallerySearch || m.name.toLowerCase().includes(state.gallerySearch)));
   const pending = state.media.filter((m) => m.kind === 'model' && m.status === 'needs_conversion');
 
+  const visible = () => state.media.filter((m) => m.kind === k && (!state.gallerySearch || m.name.toLowerCase().includes(state.gallerySearch)));
+  // Selección múltiple: sólo cuenta lo que existe en la pestaña actual.
+  const sel = state.gallerySelected;
+  for (const id of [...sel]) if (!state.media.some((m) => m.id === id && m.kind === k)) sel.delete(id);
+
   const grid = h('div', { class: 'media-grid' }, list.length ? list.map(mediaCard) : h('p', { class: 'hint' }, 'No hay elementos.'));
+  const selAll = h('input', { type: 'checkbox', 'aria-label': 'Seleccionar todo' });
+  const selCount = h('span', { class: 'hint' });
+  const delSel = h('button', { class: 'btn btn-sm btn-danger', onclick: () => deleteMany([...sel]) }, 'Eliminar seleccionados');
+  galleryRefreshBar = () => {
+    const vis = visible();
+    const n = vis.filter((m) => sel.has(m.id)).length;
+    selAll.checked = vis.length > 0 && n === vis.length;
+    selAll.indeterminate = n > 0 && n < vis.length;
+    selCount.textContent = sel.size ? `${sel.size} seleccionado(s)` : '';
+    delSel.disabled = sel.size === 0;
+    grid.querySelectorAll('.media-card').forEach((c) => {
+      const on = sel.has(Number(c.dataset.id));
+      c.classList.toggle('is-selected', on);
+      const cb = c.querySelector('.media-select input');
+      if (cb) cb.checked = on;
+    });
+  };
+  selAll.addEventListener('change', () => {
+    const vis = visible();
+    if (selAll.checked) vis.forEach((m) => sel.add(m.id)); else vis.forEach((m) => sel.delete(m.id));
+    galleryRefreshBar();
+  });
+  const bulkBar = h('div', { class: 'bulk-bar' },
+    h('label', { class: 'check' }, selAll, 'Seleccionar todo'), selCount, h('span', { class: 'grow' }), delSel);
+
   const search = h('input', { type: 'search', placeholder: 'Buscar…', value: state.gallerySearch, oninput: (e) => {
     state.gallerySearch = e.target.value.toLowerCase();
-    const items = state.media.filter((m) => m.kind === k && (!state.gallerySearch || m.name.toLowerCase().includes(state.gallerySearch)));
+    const items = visible();
     grid.replaceChildren(...(items.length ? items.map(mediaCard) : [h('p', { class: 'hint' }, 'No hay elementos.')]));
+    galleryRefreshBar();
   } });
+  queueMicrotask(() => galleryRefreshBar());
 
   return h('section', { class: 'panel' },
     h('div', { class: 'panel-head' },
       h('h2', null, 'Galería'),
       h('div', { class: 'subtabs', role: 'tablist' }, kinds.map(([v, l]) => h('button', {
         role: 'tab', class: 'subtab' + (k === v ? ' is-on' : ''), 'aria-selected': k === v ? 'true' : 'false',
-        onclick: () => { state.galleryKind = v; render(); },
+        onclick: () => { state.galleryKind = v; state.gallerySelected.clear(); render(); },
       }, l, ' ', h('span', { class: 'count' }, state.media.filter((m) => m.kind === v).length)))),
       h('span', { class: 'grow' }),
       search,
@@ -608,13 +642,52 @@ function renderGallery() {
       h('button', { class: 'btn btn-sm btn-primary', onclick: () => convertMany(pending) }, 'Convertir todos')) : null,
     k === 'model' ? h('p', { class: 'hint' }, 'Formatos: GLB (recomendado), glTF, OBJ (+MTL) y STEP/STP. Los no-GLB se convierten automáticamente a GLB en el navegador.') : null,
     k === 'photo' && !state.settings.gd_webp ? h('p', { class: 'hint' }, 'Aviso: el servidor no genera WebP; las miniaturas se crearán en JPEG.') : null,
+    list.length ? bulkBar : null,
     grid);
 }
 
+let galleryRefreshBar = () => {};
+
+/** Productos que usan un medio (foto principal, modelo, vídeo o fotos adicionales no se conocen aquí: sólo principales). */
+function mediaUsedBy(id) {
+  return state.products.filter((p) => p.photo_media_id === id || p.model_media_id === id).map((p) => p.short_name);
+}
+
+function deleteMany(ids) {
+  if (!ids.length) return;
+  const used = ids.filter((id) => mediaUsedBy(id).length);
+  let mode = null;
+  openModal(h('div', { class: 'confirm' },
+    h('p', null, `¿Quitar ${ids.length} elemento(s) de la galería?`
+      + (used.length ? ` ${used.length} se usan en productos y se quitarán de ellos.` : '')),
+    h('div', { class: 'row-end' },
+      h('button', { class: 'btn', onclick: () => closeModal() }, 'Cancelar'),
+      h('button', { class: 'btn', onclick: () => { mode = 'db'; closeModal(); } }, 'Quitar (mantener ficheros)'),
+      h('button', { class: 'btn btn-danger', onclick: () => { mode = 'files'; closeModal(); } }, 'Eliminar también los ficheros'))),
+  { onClose: async () => {
+    if (!mode) return;
+    toast(`Eliminando ${ids.length} elemento(s)…`, 'info', 0);
+    const r = await busy(null, () => api('media.delete_many', { ids, files: mode === 'files' }));
+    if (r) {
+      state.media = r.media;
+      state.products = r.products;
+      ids.forEach((id) => state.gallerySelected.delete(id));
+      toast(`${r.deleted} elemento(s) eliminado(s)`);
+      render();
+    }
+  } });
+}
+
 function mediaCard(m) {
-  const usedBy = state.products.filter((p) => p.photo_media_id === m.id || p.model_media_id === m.id).map((p) => p.short_name);
-  return h('article', { class: 'media-card' + (m.status === 'missing' ? ' is-missing' : '') },
+  const usedBy = mediaUsedBy(m.id);
+  const sel = state.gallerySelected;
+  return h('article', { class: 'media-card' + (m.status === 'missing' ? ' is-missing' : '') + (sel.has(m.id) ? ' is-selected' : ''), dataset: { id: String(m.id) } },
     h('div', { class: 'media-thumb' }, thumbFor(m),
+      h('label', { class: 'media-select', title: 'Seleccionar' },
+        h('input', { type: 'checkbox', checked: sel.has(m.id), 'aria-label': 'Seleccionar ' + m.name, onchange: (e) => {
+          if (e.target.checked) sel.add(m.id); else sel.delete(m.id);
+          galleryRefreshBar();
+        } })),
       m.status === 'needs_conversion' ? h('span', { class: 'badge badge-warn corner' }, 'Sin convertir') : null,
       m.status === 'missing' ? h('span', { class: 'badge badge-err corner' }, 'Fichero no encontrado') : null),
     h('div', { class: 'media-info' },
@@ -715,6 +788,41 @@ function passwordCard() {
 
 const ROLE_LABEL = { admin: 'Administrador', editor: 'Editor de contenido' };
 
+/** Color de letra legible (blanco u oscuro) para un fondo, igual que en el servidor. */
+function contrastText(hex) {
+  const c = [1, 3, 5].map((i) => {
+    const v = parseInt(hex.substr(i, 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] > 0.4 ? '#1d2a33' : '#ffffff';
+}
+
+/** Colores del apartado de texto (titular, descripción y características) con vista previa. */
+function infoColorsField(s) {
+  const DEF_TOP = '#00567d';
+  const DEF_BG = '#6b7479';
+  const preview = h('div', { class: 'info-preview' },
+    h('div', { class: 'info-preview-top' }, h('strong', null, 'TITULAR'), h('small', null, ' Subtítulo')),
+    h('div', { class: 'info-preview-body' }, 'Descripción del producto…', h('ul', null, h('li', null, 'Característica principal'))));
+  const paint = () => {
+    preview.querySelector('.info-preview-top').style.cssText = `background:${s.info_bg_top};color:${contrastText(s.info_bg_top)}`;
+    preview.querySelector('.info-preview-body').style.cssText = `background:${s.info_bg};color:${contrastText(s.info_bg)}`;
+  };
+  const picker = (key, label) => h('label', { class: 'color-field' },
+    h('input', { type: 'color', value: s[key], oninput: (e) => { s[key] = e.target.value; paint(); } }), h('span', null, label));
+  queueMicrotask(paint);
+  return h('div', { class: 'field' },
+    h('span', null, 'Colores del apartado de texto', h('small', null, ' (titular, descripción y características; la letra se ajusta sola)')),
+    h('div', { class: 'row' }, picker('info_bg_top', 'Franja del titular'), picker('info_bg', 'Fondo del texto'),
+      h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: (e) => {
+        s.info_bg_top = DEF_TOP;
+        s.info_bg = DEF_BG;
+        e.currentTarget.closest('.field').querySelectorAll('input[type=color]').forEach((x, i) => { x.value = i ? DEF_BG : DEF_TOP; });
+        paint();
+      } }, 'Restablecer')),
+    preview);
+}
+
 /** Clave de OpenAI: se guarda con su propio botón y se prueba contra la API al guardarla. */
 function openaiBlock(s) {
   const status = h('p', { class: 'hint' }, s.openai_key_set
@@ -808,7 +916,8 @@ function renderSettings() {
           mediaField('photo', s.header_media_id, (v) => { s.header_media_id = v; }, { label: 'Imagen por defecto' })),
         h('img', { class: 'preview-header', src: s.header_url, alt: '' }),
         h('div', { class: 'field' }, h('span', null, 'Logo de fondo del modelo 3D', h('small', null, ' (vacío = logo Bezares)')),
-          mediaField('photo', s.logo_media_id, (v) => { s.logo_media_id = v; }, { label: 'Logo por defecto' }))),
+          mediaField('photo', s.logo_media_id, (v) => { s.logo_media_id = v; }, { label: 'Logo por defecto' })),
+        infoColorsField(s)),
 
       h('div', { class: 'card' },
         h('h3', null, 'Traducción automática (ChatGPT)'),
@@ -940,7 +1049,94 @@ function securityCard() {
 // ---------------------------------------------------------------------------
 // Render principal / navegación
 // ---------------------------------------------------------------------------
-const VIEWS = { tablets: renderTablets, products: renderProducts, gallery: renderGallery, settings: renderSettings };
+// ---------------------------------------------------------------------------
+// Pestaña EVENTOS: guardar / restaurar la configuración de tablets
+// ---------------------------------------------------------------------------
+function renderEvents() {
+  const fmt = (t) => new Date(t * 1000).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+  const hasDrafts = [...state.tabletDrafts.values()].some((d) => {
+    const t = state.tablets.find((x) => x.id === d.id);
+    return !t || JSON.stringify(t) !== JSON.stringify(d);
+  });
+  const nameInput = h('input', { placeholder: 'Nombre del evento (p. ej. BBM 2026)', maxlength: 120, value: state.settings.event_title || '' });
+  const current = state.tablets.filter((t) => t.active);
+
+  const saveNew = h('button', { class: 'btn btn-primary', onclick: (e) => busy(e.currentTarget, async () => {
+    const r = await api('events.save', { name: nameInput.value });
+    state.events = r.events;
+    toast('Configuración guardada como evento');
+    render();
+  }) }, 'Guardar configuración actual');
+
+  const card = (ev) => {
+    const s = ev.summary;
+    return h('article', { class: 'card event-card' },
+      h('div', { class: 'panel-head' },
+        h('input', { class: 'event-name', value: ev.name, maxlength: 120, title: 'Nombre (Enter para guardar)', onchange: async (e) => {
+          const r = await busy(null, () => api('events.rename', { id: ev.id, name: e.target.value }));
+          if (r) { state.events = r.events; toast('Nombre guardado'); }
+        } }),
+        h('span', { class: 'grow' }),
+        h('small', { class: 'hint' }, 'Guardado ' + fmt(ev.updated_at) + (ev.created_by ? ' por ' + ev.created_by : ''))),
+      h('p', { class: 'hint' }, `Título: “${s.event_title || '—'}” · ${s.active} tablet(s) activo(s) de ${s.tablets} · ${s.products} producto(s)`),
+      h('ul', { class: 'event-detail' }, s.detail.filter((t) => t.active).map((t) =>
+        h('li', null, h('strong', null, 'Tablet ' + t.number), ': ', t.products.join(' · ') || '—'))),
+      h('div', { class: 'row-end' },
+        h('button', { class: 'btn btn-sm btn-ghost btn-danger', onclick: async () => {
+          if (!(await confirmBox(`¿Eliminar el evento “${ev.name}”? La configuración actual de los tablets no cambia.`, 'Eliminar', true))) return;
+          const r = await busy(null, () => api('events.delete', { id: ev.id }));
+          if (r) { state.events = r.events; toast('Evento eliminado'); render(); }
+        } }, 'Eliminar'),
+        h('button', { class: 'btn btn-sm', title: 'Sustituye lo guardado en este evento por la configuración actual', onclick: async (e) => {
+          const btn = e.currentTarget;
+          if (!(await confirmBox(`¿Sobrescribir “${ev.name}” con la configuración actual de los tablets?`, 'Sobrescribir'))) return;
+          const r = await busy(btn, () => api('events.save', { id: ev.id, name: ev.name }));
+          if (r) { state.events = r.events; toast('Evento actualizado'); render(); }
+        } }, 'Sobrescribir con la actual'),
+        h('button', { class: 'btn btn-sm btn-primary', onclick: async (e) => {
+          const btn = e.currentTarget;
+          let backup = true;
+          let ok = false;
+          openModal(h('div', { class: 'confirm' },
+            h('p', null, `Se sustituirá la configuración de TODOS los tablets (y el título del evento) por la de “${ev.name}”. Los tablets mostrarán el cambio al recargar.`),
+            h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: true, onchange: (x) => { backup = x.target.checked; } }),
+              'Guardar antes la configuración actual como copia automática'),
+            h('div', { class: 'row-end' },
+              h('button', { class: 'btn', onclick: () => closeModal() }, 'Cancelar'),
+              h('button', { class: 'btn btn-primary', onclick: () => { ok = true; closeModal(); } }, 'Restaurar'))),
+          { onClose: async () => {
+            if (!ok) return;
+            const r = await busy(btn, () => api('events.restore', { id: ev.id, backup }));
+            if (!r) return;
+            state.events = r.events;
+            state.tablets = r.tablets;
+            state.settings.event_title = r.event_title;
+            state.tabletDrafts.clear();
+            if (r.warnings.length) {
+              openModal(h('div', { class: 'confirm' },
+                h('h3', null, 'Evento restaurado con avisos'),
+                h('ul', null, r.warnings.map((w) => h('li', null, w))),
+                h('div', { class: 'row-end' }, h('button', { class: 'btn btn-primary', onclick: () => closeModal() }, 'Entendido'))));
+            } else {
+              toast(`Evento “${ev.name}” restaurado`);
+            }
+            render();
+          } });
+        } }, 'Restaurar')));
+  };
+
+  return h('section', { class: 'panel' },
+    h('div', { class: 'panel-head' }, h('h2', null, 'Eventos'),
+      h('span', { class: 'hint' }, 'Guarda la configuración de los tablets de cada feria (tablets activos, productos, orden, flechas, fotos, idiomas y título) para restaurarla más adelante.')),
+    h('div', { class: 'card' },
+      h('h3', null, 'Configuración actual'),
+      h('p', { class: 'hint' }, `${current.length} tablet(s) activo(s): ` + (current.map((t) => 'Tablet ' + t.number).join(', ') || 'ninguno')),
+      hasDrafts ? h('p', { class: 'flash flash-info' }, 'Hay cambios sin guardar en la pestaña Tablets: sólo se incluye lo ya guardado.') : null,
+      h('div', { class: 'row' }, nameInput, saveNew)),
+    state.events.length ? h('div', { class: 'event-list' }, state.events.map(card)) : h('p', { class: 'hint' }, 'Todavía no hay eventos guardados.'));
+}
+
+const VIEWS = { tablets: renderTablets, products: renderProducts, gallery: renderGallery, events: renderEvents, settings: renderSettings };
 
 function render() {
   if (!VIEWS[state.tab]) state.tab = 'tablets';
@@ -970,7 +1166,7 @@ window.addEventListener('beforeunload', (e) => {
 (async function init() {
   try {
     const r = await api('bootstrap');
-    Object.assign(state, { settings: r.settings, languages: r.languages, tablets: r.tablets, products: r.products, media: r.media, users: r.users, me: r.me, role: r.role });
+    Object.assign(state, { settings: r.settings, languages: r.languages, tablets: r.tablets, products: r.products, media: r.media, users: r.users, me: r.me, role: r.role, events: r.events || [] });
     render();
   } catch (e) {
     app.replaceChildren(h('p', { class: 'flash flash-error' }, 'No se pudo cargar el panel: ' + e.message));

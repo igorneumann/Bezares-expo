@@ -101,6 +101,8 @@ function settings_payload(): array
 {
     return [
         'event_title'     => setting('event_title', ''),
+        'info_bg_top'     => info_colors()['top'],
+        'info_bg'         => info_colors()['bg'],
         'site_title'      => setting('site_title', ''),
         'url_prefix'      => setting('url_prefix', ''),
         'display_prefix'  => setting('display_prefix', ''),
@@ -131,7 +133,7 @@ function users_payload(): array
 function editor_settings_payload(): array
 {
     $s = settings_payload();
-    return array_intersect_key($s, array_flip(['header_url', 'logo_url', 'max_upload_mb', 'gd_webp', 'url_prefix', 'display_prefix']));
+    return array_intersect_key($s, array_flip(['header_url', 'logo_url', 'max_upload_mb', 'gd_webp', 'url_prefix', 'display_prefix', 'event_title']));
 }
 
 // Roles: los editores gestionan contenido (tablets, productos, galería);
@@ -152,6 +154,7 @@ try {
             json_out(['ok' => true, 'me' => (int)$user['id'], 'role' => $user['role'],
                       'settings' => $admin ? settings_payload() : editor_settings_payload(), 'languages' => languages(),
                       'tablets' => tablets_payload(), 'products' => products_payload(), 'media' => media_payload(),
+                      'events' => events_list(),
                       'users' => $admin ? users_payload() : [['id' => (int)$user['id'], 'username' => $user['username'], 'email' => $user['email'], 'role' => $user['role']]]]);
 
         // ---------------- Productos ----------------
@@ -355,6 +358,61 @@ try {
             bump_content_version();
             json_out(['ok' => true, 'media' => media_payload()]);
 
+        // ---------------- Eventos ----------------
+        case 'events.list':
+            json_out(['ok' => true, 'events' => events_list()]);
+
+        case 'events.save':
+            $name = in_str($d, 'name', 120);
+            if ($name === '') {
+                json_error('Escribe un nombre para el evento.');
+            }
+            $eid = events_save($name, (string)$user['username'], in_int($d, 'id'));
+            log_event('evento guardado "' . $name . '" por ' . $user['username']);
+            json_out(['ok' => true, 'id' => $eid, 'events' => events_list()]);
+
+        case 'events.restore':
+            $eid = (int)in_int($d, 'id');
+            $st = db()->prepare('SELECT name FROM events WHERE id = ?');
+            $st->execute([$eid]);
+            $ename = $st->fetchColumn();
+            if ($ename === false) {
+                json_error('Evento no encontrado', 404);
+            }
+            // Copia de seguridad automática de la configuración actual antes de sustituirla.
+            if (!empty($d['backup'])) {
+                events_save('Copia automática antes de restaurar «' . $ename . '» (' . date('d/m/Y H:i') . ')', (string)$user['username']);
+            }
+            $warnings = events_restore($eid);
+            log_event('evento restaurado "' . $ename . '" por ' . $user['username']);
+            json_out(['ok' => true, 'warnings' => $warnings, 'events' => events_list(), 'tablets' => tablets_payload(),
+                      'event_title' => setting('event_title', '')]);
+
+        case 'events.rename':
+            $name = in_str($d, 'name', 120);
+            if ($name === '') {
+                json_error('El nombre no puede estar vacío.');
+            }
+            db()->prepare('UPDATE events SET name = ? WHERE id = ?')->execute([$name, (int)in_int($d, 'id')]);
+            json_out(['ok' => true, 'events' => events_list()]);
+
+        case 'events.delete':
+            db()->prepare('DELETE FROM events WHERE id = ?')->execute([(int)in_int($d, 'id')]);
+            log_event('evento eliminado id=' . (int)in_int($d, 'id') . ' por ' . $user['username']);
+            json_out(['ok' => true, 'events' => events_list()]);
+
+        case 'media.delete_many':
+            $ids = array_values(array_unique(array_filter(array_map('intval', is_array($d['ids'] ?? null) ? $d['ids'] : []))));
+            if (!$ids || count($ids) > 1000) {
+                json_error('Selección no válida.');
+            }
+            @set_time_limit(300);
+            foreach ($ids as $mid) {
+                media_delete($mid, !empty($d['files']));
+            }
+            log_event(count($ids) . ' medios eliminados por ' . $user['username'] . (!empty($d['files']) ? ' (con ficheros)' : ''));
+            json_out(['ok' => true, 'deleted' => count($ids), 'media' => media_payload(), 'products' => products_payload()]);
+
         case 'media.delete':
             media_delete((int)in_int($d, 'id'), !empty($d['files']));
             json_out(['ok' => true, 'media' => media_payload(), 'products' => products_payload()]);
@@ -368,6 +426,15 @@ try {
             $from = in_str($d, 'mail_from', 150);
             if ($from !== '' && !filter_var($from, FILTER_VALIDATE_EMAIL)) {
                 json_error('Email remitente no válido.');
+            }
+            foreach (['info_bg_top', 'info_bg'] as $ck) {
+                $col = strtolower(in_str($d, $ck, 7));
+                if ($col !== '' && !preg_match('/^#[0-9a-f]{6}$/D', $col)) {
+                    json_error('Color no válido.');
+                }
+                if ($col !== '') {
+                    set_setting($ck, $col);
+                }
             }
             set_setting('event_title', in_str($d, 'event_title', 120));
             set_setting('site_title', in_str($d, 'site_title', 150));

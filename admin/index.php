@@ -74,6 +74,7 @@ header('X-Robots-Tag: noindex, nofollow');
     <button role="tab" data-tab="tablets" aria-selected="true">Tablets</button>
     <button role="tab" data-tab="products">Productos</button>
     <button role="tab" data-tab="gallery">Galería</button>
+    <button role="tab" data-tab="events">Eventos</button>
     <button role="tab" data-tab="settings">Configuración</button>
   </nav>
   <div class="who">

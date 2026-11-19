@@ -27,7 +27,8 @@ a { color: var(--blue); }
 
 /* ---- Encabezado ---- */
 .site-header { background: #fff; }
-.site-header img { width: 100%; height: auto; max-height: 30vh; object-fit: contain; margin: 0 auto; }
+/* Siempre a ancho completo (vertical y horizontal); la altura se adapta a la proporción de la imagen. */
+.site-header img { width: 100%; max-width: none; height: auto; }
 
 /* ---- Página principal ---- */
 .wrap { max-width: 1200px; margin: 0 auto; padding: var(--gap); }
@@ -119,11 +120,31 @@ a { color: var(--blue); }
   .media-row.no-video .model3d { aspect-ratio: 21 / 9; max-height: 70vh; width: 100%; }
 }
 
+/* Pantalla completa */
+.fs-target { position: relative; }
+.fs-btn {
+  position: absolute; right: 12px; bottom: 12px; z-index: 5;
+  display: grid; place-items: center; width: 48px; height: 48px; padding: 0;
+  border: 0; border-radius: 12px; cursor: pointer;
+  background: rgba(0, 40, 60, .55); color: #fff; backdrop-filter: blur(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+}
+.fs-btn svg { width: 26px; height: 26px; }
+.fs-btn:active { transform: scale(.94); }
+.fs-target:fullscreen { width: 100vw; height: 100vh; max-height: none; aspect-ratio: auto; background-color: #000; }
+.model3d:fullscreen { background-color: #fff; }
+.fs-target:fullscreen video, .fs-target:fullscreen iframe { object-fit: contain; }
+.fs-target:fullscreen .fs-btn svg { transform: rotate(180deg); }
+.fs-target:-webkit-full-screen { width: 100vw; height: 100vh; aspect-ratio: auto; }
+
 /* Textos */
 .info {
-  color: #fff; padding: clamp(18px, 3vw, 36px) clamp(16px, 5vw, 64px) clamp(22px, 4vw, 48px);
-  background: linear-gradient(180deg, var(--blue) 0, var(--blue) 9rem, var(--grey) 17rem, var(--grey) 100%);
+  /* Colores configurables en el panel (Configuración > Encabezado y páginas) */
+  color: var(--info-fg, #fff); padding: clamp(18px, 3vw, 36px) clamp(16px, 5vw, 64px) clamp(22px, 4vw, 48px);
+  background: linear-gradient(180deg, var(--info-top, var(--blue)) 0, var(--info-top, var(--blue)) 9rem,
+              var(--info-bg, var(--grey)) 17rem, var(--info-bg, var(--grey)) 100%);
 }
+.titles { color: var(--info-fg-top, #fff); }
 .titles { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 6px 24px; margin-bottom: clamp(14px, 2.4vw, 26px); }
 .titles h2 {
   margin: 0; font-weight: 800; text-transform: uppercase; line-height: .95; letter-spacing: -.02em;
@@ -137,10 +158,10 @@ a { color: var(--blue); }
 .feats ul { margin: .2em 0 0; padding-left: 1.2em; font-weight: 300; font-size: clamp(.95rem, 1.7vw, 1.08rem); }
 .feats li { margin: .25em 0; }
 .feats li::marker { color: var(--sky); }
-.desc + .feats { border-top: 1px solid rgba(255, 255, 255, .25); padding-top: 14px; margin-top: 4px; }
+.desc + .feats { border-top: 1px solid color-mix(in srgb, currentColor 25%, transparent); padding-top: 14px; margin-top: 4px; }
 @media (max-width: 560px) {
   .info.two .cols { grid-template-columns: 1fr; }
-  .info.two .cols > div + div { border-top: 1px solid rgba(255, 255, 255, .25); padding-top: 12px; margin-top: 4px; }
+  .info.two .cols > div + div { border-top: 1px solid color-mix(in srgb, currentColor 25%, transparent); padding-top: 12px; margin-top: 4px; }
 }
 
 /* Fotos adicionales */

@@ -38,6 +38,30 @@
   document.addEventListener('pointerdown', wake, { passive: true });
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') wake(); });
 
+  // Botones de pantalla completa (vídeo y modelo 3D). Se pone en pantalla completa la
+  // sección entera para conservar el fondo (logo) y el propio botón para salir.
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target.closest && ev.target.closest('[data-fullscreen]');
+    if (!btn) return;
+    var target = btn.closest('.fs-target');
+    if (!target) return;
+    var doc = document;
+    var current = doc.fullscreenElement || doc.webkitFullscreenElement;
+    if (current) {
+      (doc.exitFullscreen || doc.webkitExitFullscreen).call(doc);
+      return;
+    }
+    var req = target.requestFullscreen || target.webkitRequestFullscreen;
+    if (req) {
+      var p = req.call(target);
+      if (p && p.catch) p.catch(function () {});
+      return;
+    }
+    // iPhone/iPad antiguos: sólo el vídeo nativo puede ir a pantalla completa.
+    var v = target.querySelector('video');
+    if (v && v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+  });
+
   // Reanudar vídeo si el navegador lo pausa al volver a la pestaña.
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState !== 'visible') return;

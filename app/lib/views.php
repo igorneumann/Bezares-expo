@@ -66,6 +66,32 @@ function logo_image_url(): string
     return $m ? media_url($m) : asset('assets/logo-bezares.svg');
 }
 
+/** Colores del apartado de texto (franja del titular y fondo) y color de letra según el contraste. */
+function info_colors(): array
+{
+    $hex = static fn(string $k, string $def): string => preg_match('/^#[0-9a-f]{6}$/iD', (string)setting($k, '')) ? strtolower((string)setting($k)) : $def;
+    $top = $hex('info_bg_top', '#00567d');
+    $bg = $hex('info_bg', '#6b7479');
+    // Luminancia relativa (WCAG) del fondo principal para elegir texto blanco u oscuro.
+    $lum = static function (string $h): float {
+        $c = array_map(static function ($v) {
+            $v = hexdec($v) / 255;
+            return $v <= 0.03928 ? $v / 12.92 : (($v + 0.055) / 1.055) ** 2.4;
+        }, str_split(substr($h, 1), 2));
+        return 0.2126 * $c[0] + 0.7152 * $c[1] + 0.0722 * $c[2];
+    };
+    $fg = static fn(string $h): string => $lum($h) > 0.4 ? '#1d2a33' : '#ffffff';
+    return ['top' => $top, 'bg' => $bg, 'fg' => $fg($bg), 'fg_top' => $fg($top)];
+}
+
+/** Botón de pantalla completa (lo gestiona assets/expo.js). */
+function fullscreen_button(): string
+{
+    return '<button type="button" class="fs-btn" data-fullscreen aria-label="Pantalla completa" title="Pantalla completa">'
+        . '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        . '</button>';
+}
+
 function youtube_id(?string $url): ?string
 {
     if (!$url) {
@@ -275,12 +301,14 @@ function render_tablet(int $number, ?string $letter): void
     $hasVideo = $video || $yt;
     echo '<div class="media-row' . ($hasVideo ? '' : ' no-video') . '">';
     if ($video) {
-        echo '<section class="video"><video src="' . e(media_url($video)) . '" autoplay muted loop playsinline preload="auto" disablepictureinpicture></video></section>';
+        echo '<section class="video fs-target"><video src="' . e(media_url($video)) . '" autoplay muted loop playsinline preload="auto" disablepictureinpicture></video>'
+            . fullscreen_button() . '</section>';
     } elseif ($yt) {
-        echo '<section class="video"><iframe src="https://www.youtube-nocookie.com/embed/' . e($yt) . '?autoplay=1&amp;mute=1&amp;loop=1&amp;playlist=' . e($yt)
-            . '&amp;controls=0&amp;fs=0&amp;disablekb=1&amp;iv_load_policy=3&amp;rel=0&amp;playsinline=1" title="Vídeo" allow="autoplay; encrypted-media" loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe></section>';
+        echo '<section class="video fs-target"><iframe src="https://www.youtube-nocookie.com/embed/' . e($yt) . '?autoplay=1&amp;mute=1&amp;loop=1&amp;playlist=' . e($yt)
+            . '&amp;controls=0&amp;fs=0&amp;disablekb=1&amp;iv_load_policy=3&amp;rel=0&amp;playsinline=1" title="Vídeo" allow="autoplay; encrypted-media" loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe>'
+            . fullscreen_button() . '</section>';
     }
-    echo '<section class="model3d' . ($model ? '' : ' is-photo') . '" style="--logo:url(&quot;' . e(logo_image_url()) . '&quot;)">';
+    echo '<section class="model3d fs-target' . ($model ? '' : ' is-photo') . '" style="--logo:url(&quot;' . e(logo_image_url()) . '&quot;)">';
     if ($model) {
         $s = media_settings($model);
         $radius = max(20, min(400, round(10000 / max(10, (float)$s['size']))));
@@ -295,11 +323,16 @@ function render_tablet(int $number, ?string $letter): void
         [$src, $srcset] = media_photo_srcset($mainPhoto);
         echo '<img class="model-fallback" src="' . e($src) . '"' . ($srcset ? ' srcset="' . e($srcset) . '" sizes="(orientation: landscape) 50vw, 100vw"' : '') . ' alt="' . e($p['short_name']) . '" decoding="async">';
     }
+    if ($model || $mainPhoto) {
+        echo fullscreen_button();
+    }
     echo '</section></div>';
 
     // 4-6) Titular, descripción y características en 2 idiomas
     $two = $t2 !== null;
-    echo '<section class="info' . ($two ? ' two' : '') . '">';
+    $ic = info_colors(); // valores validados (#rrggbb)
+    echo '<section class="info' . ($two ? ' two' : '') . '" style="--info-top:' . $ic['top'] . ';--info-bg:' . $ic['bg']
+        . ';--info-fg:' . $ic['fg'] . ';--info-fg-top:' . $ic['fg_top'] . '">';
     echo '<div class="titles"><h2 lang="' . e($l1) . '">' . e($t1['title'] ?: $p['short_name']) . '</h2>'
         . ($two && $t2['title'] !== '' ? '<p class="title2" lang="' . e($l2) . '">' . e($t2['title']) . '</p>' : '') . '</div>';
     $d1 = text_paragraphs($t1['description']);

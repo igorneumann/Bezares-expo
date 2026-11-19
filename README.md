@@ -115,7 +115,11 @@ Enlace en el pie de la página principal → `/admin/` (usuario/contraseña, "Ma
   con tamaño pequeño / mediano / grande.
 - **Galería**: Vídeos, Modelos 3D (GLB, glTF, OBJ, STEP/STP; posición, tamaño, luminosidad, sombra y velocidad de giro
   con vista previa en vivo) y Fotos. Botón **Escanear carpeta FTP** para registrar lo subido por FTP a `/media` y subcarpetas.
-- **Configuración**: título del evento, imagen de encabezado, logo de fondo del 3D, prefijos de URL, clave de OpenAI,
+  Casillas de selección y "Seleccionar todo" para eliminar varios ficheros a la vez.
+- **Eventos**: guarda la configuración de los tablets de cada feria (tablets activos, productos, orden, flechas,
+  fotos, idiomas y título del evento) y restáurala más tarde (con copia automática de la configuración actual).
+- **Configuración**: título del evento, imagen de encabezado, logo de fondo del 3D, colores del apartado de texto
+  (franja del titular y fondo; la letra se ajusta sola), prefijos de URL, clave de OpenAI,
   idiomas, usuarios y roles, seguridad.
 
 ### URLs de los tablets
