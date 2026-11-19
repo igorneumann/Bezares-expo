@@ -319,7 +319,7 @@ function render_tablet(int $number, ?string $letter): void
         echo '<model-viewer src="' . e(media_url($model)) . '" alt="' . e($p['short_name']) . '"'
             . ' auto-rotate auto-rotate-delay="0" rotation-per-second="' . (float)$s['speed'] . 'deg"'
             . ' camera-controls disable-zoom disable-pan touch-action="pan-y" interaction-prompt="none"'
-            . ' orientation="' . (float)$s['rz'] . 'deg ' . (float)$s['rx'] . 'deg ' . (float)$s['ry'] . 'deg"'
+            . ' orientation="' . e(model_orientation($s)) . '"'
             . ' camera-orbit="0deg ' . (float)$s['elevation'] . 'deg ' . $radius . '%"'
             . ' exposure="' . (float)$s['exposure'] . '" shadow-intensity="' . (float)$s['shadow'] . '"'
             . ' environment-image="neutral" loading="eager" reveal="auto"></model-viewer>';

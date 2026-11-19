@@ -10,7 +10,25 @@ const MEDIA_EXT = [
 ];
 const MEDIA_FOLDERS = ['video' => 'videos', 'model' => 'models', 'photo' => 'photos'];
 const PHOTO_WIDTHS = [480, 1024, 1920];
-const MODEL_DEFAULTS = ['rx' => 0, 'ry' => 0, 'rz' => 0, 'size' => 100, 'elevation' => 75, 'exposure' => 1.0, 'shadow' => 0.6, 'speed' => 30];
+const MODEL_DEFAULTS = ['down' => '-y', 'rx' => 0, 'ry' => 0, 'rz' => 0, 'size' => 100, 'elevation' => 75, 'exposure' => 1.0, 'shadow' => 0.6, 'speed' => 30];
+
+/*
+ * Eje del modelo que queda hacia abajo (el producto gira alrededor de ese eje).
+ * Valor => giro base [roll (Z), pitch (X)] en grados que lleva ese eje a apuntar hacia abajo.
+ * glTF usa Y arriba (-Y abajo); muchos CAD (STEP) usan Z arriba (-Z abajo).
+ */
+const MODEL_DOWN_AXES = [
+    '-y' => [0, 0], '+y' => [0, 180],
+    '-z' => [0, -90], '+z' => [0, 90],
+    '-x' => [90, 0], '+x' => [-90, 0],
+];
+
+/** Atributo "orientation" de model-viewer (roll pitch yaw) combinando el eje abajo y los giros manuales. */
+function model_orientation(array $s): string
+{
+    [$roll, $pitch] = MODEL_DOWN_AXES[$s['down'] ?? '-y'] ?? [0, 0];
+    return ((float)$s['rz'] + $roll) . 'deg ' . ((float)$s['rx'] + $pitch) . 'deg ' . (float)$s['ry'] . 'deg';
+}
 
 function media_root(): string
 {

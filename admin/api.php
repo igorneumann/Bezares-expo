@@ -365,6 +365,9 @@ try {
             if ($m['kind'] === 'model' && is_array($d['settings'] ?? null)) {
                 $lim = ['rx' => [-180, 180], 'ry' => [-180, 180], 'rz' => [-180, 180], 'size' => [10, 400], 'elevation' => [0, 180],
                         'exposure' => [0, 4], 'shadow' => [0, 2], 'speed' => [0, 180]];
+                if (isset($d['settings']['down']) && isset(MODEL_DOWN_AXES[$d['settings']['down']])) {
+                    $settings['down'] = $d['settings']['down'];
+                }
                 foreach ($lim as $k => [$lo, $hi]) {
                     if (isset($d['settings'][$k]) && is_numeric($d['settings'][$k])) {
                         $settings[$k] = max($lo, min($hi, round((float)$d['settings'][$k], 2)));

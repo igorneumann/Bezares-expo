@@ -820,9 +820,20 @@ function mediaCard(m) {
       } }, 'Eliminar')));
 }
 
+// Eje del modelo que queda hacia abajo => giro base [roll (Z), pitch (X)] (igual que en el servidor).
+const DOWN_AXES = {
+  '-y': { base: [0, 0], label: '−Y abajo (estándar glTF/GLB)' },
+  '+y': { base: [0, 180], label: '+Y abajo (modelo boca abajo)' },
+  '-z': { base: [0, -90], label: '−Z abajo (CAD/STEP con Z arriba)' },
+  '+z': { base: [0, 90], label: '+Z abajo' },
+  '-x': { base: [90, 0], label: '−X abajo' },
+  '+x': { base: [-90, 0], label: '+X abajo' },
+};
+
 function modelViewerAttrs(mv, s) {
+  const [roll, pitch] = (DOWN_AXES[s.down] || DOWN_AXES['-y']).base;
   const radius = Math.max(20, Math.min(400, Math.round(10000 / Math.max(10, s.size))));
-  mv.setAttribute('orientation', `${s.rz}deg ${s.rx}deg ${s.ry}deg`);
+  mv.setAttribute('orientation', `${s.rz + roll}deg ${s.rx + pitch}deg ${s.ry}deg`);
   mv.setAttribute('camera-orbit', `0deg ${s.elevation}deg ${radius}%`);
   mv.setAttribute('exposure', String(s.exposure));
   mv.setAttribute('shadow-intensity', String(s.shadow));
@@ -854,6 +865,10 @@ function openModelEditor(m) {
       stage,
       h('div', { class: 'sliders' },
         h('h4', null, 'Posición'),
+        h('label', { class: 'field' },
+          h('span', null, 'Eje hacia abajo', h('small', null, ' (el producto gira alrededor de este eje)')),
+          h('select', { onchange: (e) => { s.down = e.target.value; modelViewerAttrs(mv, s); } },
+            Object.entries(DOWN_AXES).map(([v, o]) => h('option', { value: v, selected: (s.down || '-y') === v }, o.label)))),
         slider('rx', 'Rotación X', -180, 180, 1, '°'),
         slider('ry', 'Rotación Y', -180, 180, 1, '°'),
         slider('rz', 'Rotación Z', -180, 180, 1, '°'),
