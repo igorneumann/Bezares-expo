@@ -127,7 +127,9 @@ function admin_csp(string $extraScriptHash = ''): string
     return "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'" . $h . "; style-src 'self' 'unsafe-inline'; "
         . "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob: data:; "
         . "worker-src 'self' blob:; font-src 'self'; frame-src https://www.youtube-nocookie.com; "
-        . "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+        // El panel también puede abrirse dentro del iframe de los sitios de confianza
+        // (mismo listado que las páginas públicas); el resto de webs no pueden incrustarlo.
+        . "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors " . frame_ancestors_value();
 }
 
 /** Versión de contenido: se incrementa en cada cambio del admin (ETag de páginas). */
