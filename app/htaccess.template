@@ -83,4 +83,9 @@ RewriteRule ^ index.php [L,QSA]
     <FilesMatch "^sw\.js$">
         Header set Service-Worker-Allowed "/"
     </FilesMatch>
+    # Worker del conversor STEP: OpenCascade/embind necesita 'unsafe-eval'. Sólo se permite
+    # en este worker (aislado, sin acceso al DOM), nunca en las páginas.
+    <FilesMatch "^occt-worker\.js$">
+        Header set Content-Security-Policy "default-src 'none'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self'"
+    </FilesMatch>
 </IfModule>

@@ -218,7 +218,8 @@ function mediaField(kind, value, onChange, { label, allowClear = true } = {}) {
 // ---------------------------------------------------------------------------
 const ACCEPT = {
   video: '.mp4,.m4v,.webm',
-  model: '.glb,.gltf,.obj,.stp,.step',
+  // Incluye los ficheros asociados de glTF/OBJ, que se seleccionan a la vez que el modelo.
+  model: '.glb,.gltf,.obj,.stp,.step,.bin,.mtl,.png,.jpg,.jpeg,.webp,.gif,.bmp',
   photo: '.jpg,.jpeg,.png,.webp,.gif,.avif,.svg',
 };
 const CHUNK = 4 * 1024 * 1024;
@@ -251,7 +252,36 @@ async function uploadFile(file, kind, { convertOf = 0, onProgress } = {}) {
   throw new Error('Subida incompleta');
 }
 
+/**
+ * Modelos glTF/OBJ: se convierten a GLB aquí mismo con sus ficheros asociados (.bin, .mtl,
+ * texturas) seleccionados a la vez, y se sube sólo el GLB. STEP y GLB se suben tal cual.
+ */
+async function prepareModelFiles(files) {
+  const isMain = (f) => /\.(gltf|obj)$/i.test(f.name);
+  const isDirect = (f) => /\.(glb|stp|step)$/i.test(f.name);
+  const mains = files.filter(isMain);
+  const companions = files.filter((f) => !isMain(f) && !isDirect(f));
+  const out = files.filter(isDirect);
+  if (!mains.length && companions.length) {
+    toast('Los ficheros .bin, .mtl y las texturas se seleccionan junto con su .gltf u .obj.', 'error', 8000);
+  }
+  if (!mains.length) return out;
+  if (!converterModule) converterModule = await import('./admin-convert.js' + VERSION_QS);
+  for (const main of mains) {
+    try {
+      toast(`Convirtiendo ${main.name} a GLB…`, 'info', 0);
+      const blob = await converterModule.convertFilesToGlb(main, companions, (msg) => toast(`${main.name}: ${msg}`, 'info', 0));
+      out.push(new File([blob], main.name.replace(/\.[^.]+$/, '') + '.glb', { type: 'model/gltf-binary' }));
+    } catch (e) {
+      toast(`${main.name}: ${e.message}`, 'error', 12000);
+      await sleep(3000);
+    }
+  }
+  return out;
+}
+
 async function uploadFiles(files, kind) {
+  if (kind === 'model') files = await prepareModelFiles(files);
   const added = [];
   let k = 0;
   for (const f of files) {
@@ -677,7 +707,8 @@ function renderGallery() {
     k === 'model' && pending.length ? h('div', { class: 'flash flash-info row' },
       h('span', { class: 'grow' }, `${pending.length} modelo(s) pendientes de convertir a GLB. Los tablets sólo descargan GLB (más ligero).`),
       h('button', { class: 'btn btn-sm btn-primary', onclick: () => convertMany(pending) }, 'Convertir todos')) : null,
-    k === 'model' ? h('p', { class: 'hint' }, 'Formatos: GLB (recomendado), glTF, OBJ (+MTL) y STEP/STP. Los no-GLB se convierten automáticamente a GLB en el navegador.') : null,
+    k === 'model' ? h('p', { class: 'hint' }, 'Formatos: GLB (recomendado), glTF, OBJ y STEP/STP; todos se convierten a GLB en el navegador. '
+      + 'Para glTF u OBJ selecciona a la vez el modelo y TODOS sus ficheros (.bin, .mtl, texturas). Por FTP, súbelos juntos en la misma carpeta.') : null,
     k === 'photo' && !state.settings.gd_webp ? h('p', { class: 'hint' }, 'Aviso: el servidor no genera WebP; las miniaturas se crearán en JPEG.') : null,
     list.length ? bulkBar : null,
     grid);
