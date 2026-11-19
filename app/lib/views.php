@@ -284,8 +284,7 @@ function render_tablet(int $number, ?string $letter): void
 
     page_head(tablet_code($number, $idx) . ' | ' . $p['short_name'] . ' – Bezares SA', 'page-tablet', $head);
 
-    echo '<h1 class="page-title">' . e(tablet_code($number, $idx)) . ' | ' . e($p['short_name']) . '</h1>';
-
+    // Sin titular visible ("BBM-t1b | FRV"): tras el encabezado va directamente el índice.
     // 1) Índice de productos del tablet
     echo '<nav class="pidx" style="--n:' . count($items) . '" aria-label="Productos">';
     foreach ($items as $i => $it) {
