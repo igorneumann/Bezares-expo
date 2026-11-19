@@ -316,7 +316,9 @@ function render_tablet(int $number, ?string $letter): void
     if ($model) {
         $s = media_settings($model);
         $radius = max(20, min(400, round(10000 / max(10, (float)$s['size']))));
+        $offset = model_offset_style($s);
         echo '<model-viewer src="' . e(media_url($model)) . '" alt="' . e($p['short_name']) . '"'
+            . ($offset !== '' ? ' style="' . e($offset) . '"' : '')
             . ' auto-rotate auto-rotate-delay="0" rotation-per-second="' . (float)$s['speed'] . 'deg"'
             . ' camera-controls disable-zoom disable-pan touch-action="pan-y" interaction-prompt="none"'
             . ' orientation="' . e(model_orientation($s)) . '"'

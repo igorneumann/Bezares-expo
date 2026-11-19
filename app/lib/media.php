@@ -10,7 +10,18 @@ const MEDIA_EXT = [
 ];
 const MEDIA_FOLDERS = ['video' => 'videos', 'model' => 'models', 'photo' => 'photos'];
 const PHOTO_WIDTHS = [480, 1024, 1920];
-const MODEL_DEFAULTS = ['down' => '-y', 'rx' => 0, 'ry' => 0, 'rz' => 0, 'size' => 100, 'elevation' => 75, 'exposure' => 1.0, 'shadow' => 0.6, 'speed' => 30];
+// offset_x / offset_y: desplazamiento del modelo en pantalla (% del recuadro; + = derecha / arriba).
+// Se aplica al visor completo, así el producto sigue girando sobre su propio eje.
+const MODEL_DEFAULTS = ['down' => '-y', 'rx' => 0, 'ry' => 0, 'rz' => 0, 'offset_x' => 0, 'offset_y' => 0,
+                        'size' => 100, 'elevation' => 75, 'exposure' => 1.0, 'shadow' => 0.6, 'speed' => 30];
+
+/** Estilo CSS del desplazamiento en pantalla del visor 3D. */
+function model_offset_style(array $s): string
+{
+    $x = max(-50, min(50, (float)$s['offset_x']));
+    $y = max(-50, min(50, (float)$s['offset_y']));
+    return ($x == 0.0 && $y == 0.0) ? '' : 'transform:translate(' . $x . '%,' . (-$y) . '%)';
+}
 
 /*
  * Eje del modelo que queda hacia abajo (el producto gira alrededor de ese eje).

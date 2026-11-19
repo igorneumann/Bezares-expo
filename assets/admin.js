@@ -834,6 +834,10 @@ function modelViewerAttrs(mv, s) {
   const [roll, pitch] = (DOWN_AXES[s.down] || DOWN_AXES['-y']).base;
   const radius = Math.max(20, Math.min(400, Math.round(10000 / Math.max(10, s.size))));
   mv.setAttribute('orientation', `${s.rz + roll}deg ${s.rx + pitch}deg ${s.ry}deg`);
+  // Desplazamiento en pantalla (+ = derecha / arriba), igual que en las páginas de tablet.
+  const ox = s.offset_x || 0;
+  const oy = s.offset_y || 0;
+  mv.style.transform = ox || oy ? `translate(${ox}%, ${-oy}%)` : '';
   mv.setAttribute('camera-orbit', `0deg ${s.elevation}deg ${radius}%`);
   mv.setAttribute('exposure', String(s.exposure));
   mv.setAttribute('shadow-intensity', String(s.shadow));
@@ -873,6 +877,8 @@ function openModelEditor(m) {
         slider('ry', 'Rotación Y', -180, 180, 1, '°'),
         slider('rz', 'Rotación Z', -180, 180, 1, '°'),
         slider('elevation', 'Ángulo de cámara', 0, 180, 1, '°'),
+        slider('offset_y', 'Subir / bajar', -50, 50, 1, '%'),
+        slider('offset_x', 'Izquierda / derecha', -50, 50, 1, '%'),
         h('h4', null, 'Tamaño y luz'),
         slider('size', 'Tamaño', 10, 400, 1, '%'),
         slider('exposure', 'Luminosidad', 0, 4, 0.05),

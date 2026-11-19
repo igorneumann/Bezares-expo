@@ -364,7 +364,8 @@ try {
             $settings = media_settings($m);
             if ($m['kind'] === 'model' && is_array($d['settings'] ?? null)) {
                 $lim = ['rx' => [-180, 180], 'ry' => [-180, 180], 'rz' => [-180, 180], 'size' => [10, 400], 'elevation' => [0, 180],
-                        'exposure' => [0, 4], 'shadow' => [0, 2], 'speed' => [0, 180]];
+                        'exposure' => [0, 4], 'shadow' => [0, 2], 'speed' => [0, 180],
+                        'offset_x' => [-50, 50], 'offset_y' => [-50, 50]];
                 if (isset($d['settings']['down']) && isset(MODEL_DOWN_AXES[$d['settings']['down']])) {
                     $settings['down'] = $d['settings']['down'];
                 }
