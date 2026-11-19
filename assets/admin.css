@@ -206,6 +206,11 @@ summary { cursor: pointer; font-weight: 600; color: var(--blue); }
 /* Colores del apartado de texto */
 .color-field { display: inline-flex; align-items: center; gap: 6px; font-size: .88rem; margin-right: 10px; }
 .color-field input[type=color] { width: 44px; height: 34px; padding: 2px; border: 1px solid #c5d0d7; border-radius: 8px; background: #fff; cursor: pointer; }
+.color-grid { display: grid; grid-template-columns: auto 1fr 1fr; gap: 8px 12px; align-items: center; }
+.color-grid > strong { font-size: .8rem; color: var(--muted); text-transform: uppercase; }
+.color-field .check.inline { margin: 0 0 0 6px; font-size: .8rem; gap: 4px; }
+.color-field input[type=color]:disabled { opacity: .45; cursor: default; }
+@media (max-width: 560px) { .color-grid { grid-template-columns: 1fr; } }
 .info-preview { margin-top: 8px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); font-size: .85rem; }
 .info-preview-top { padding: 8px 12px; text-transform: uppercase; }
 .info-preview-body { padding: 8px 12px; }

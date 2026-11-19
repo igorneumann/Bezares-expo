@@ -105,6 +105,8 @@ function settings_payload(): array
         'newsletter_label'   => newsletter_label(),
         'newsletter_html'    => newsletter_html(),
         'newsletter_default' => NEWSLETTER_DEFAULT_HTML,
+        'info_fg_top'     => info_colors()['fg_top_auto'] ? 'auto' : info_colors()['fg_top'],
+        'info_fg'         => info_colors()['fg_auto'] ? 'auto' : info_colors()['fg'],
         'info_bg_top'     => info_colors()['top'],
         'info_bg'         => info_colors()['bg'],
         'site_title'      => setting('site_title', ''),
@@ -137,7 +139,7 @@ function users_payload(): array
 function editor_settings_payload(): array
 {
     $s = settings_payload();
-    return array_intersect_key($s, array_flip(['header_url', 'logo_url', 'max_upload_mb', 'gd_webp', 'url_prefix', 'display_prefix', 'event_title']));
+    return array_intersect_key($s, array_flip(['header_url', 'logo_url', 'max_upload_mb', 'gd_webp', 'url_prefix', 'display_prefix', 'event_title', 'site_title']));
 }
 
 // Roles: los editores gestionan contenido (tablets, productos, galería);
@@ -328,6 +330,16 @@ try {
             bump_content_version();
             json_out(['ok' => true, 'id' => $id, 'tablets' => tablets_payload()]);
 
+        case 'tablets.settings':
+            // Títulos y prefijos de URL: forman parte de la configuración del evento.
+            $err = event_settings_apply($d);
+            if ($err !== null) {
+                json_error($err);
+            }
+            bump_content_version();
+            log_event('ajustes de tablets guardados por ' . $user['username']);
+            json_out(['ok' => true, 'settings' => is_admin($user) ? settings_payload() : editor_settings_payload(), 'tablets' => tablets_payload()]);
+
         case 'tablet.delete':
             db()->prepare('DELETE FROM tablets WHERE id = ?')->execute([(int)in_int($d, 'id')]);
             bump_content_version();
@@ -390,7 +402,7 @@ try {
             $warnings = events_restore($eid);
             log_event('evento restaurado "' . $ename . '" por ' . $user['username']);
             json_out(['ok' => true, 'warnings' => $warnings, 'events' => events_list(), 'tablets' => tablets_payload(),
-                      'event_title' => setting('event_title', '')]);
+                      'event_settings' => event_settings_current()]);
 
         case 'events.rename':
             $name = in_str($d, 'name', 120);
@@ -423,10 +435,6 @@ try {
 
         // ---------------- Configuración ----------------
         case 'settings.save':
-            $prefix = strtolower(in_str($d, 'url_prefix', 30));
-            if (!preg_match('/^[a-z][a-z0-9-]{0,28}[a-z-]$/', $prefix)) {
-                json_error('Prefijo de URL: letras minúsculas, números y guiones; no puede terminar en número.');
-            }
             $from = in_str($d, 'mail_from', 150);
             if ($from !== '' && !filter_var($from, FILTER_VALIDATE_EMAIL)) {
                 json_error('Email remitente no válido.');
@@ -440,16 +448,26 @@ try {
                     set_setting($ck, $col);
                 }
             }
+            // Color del texto: "auto" (según el fondo) o #rrggbb
+            foreach (['info_fg_top', 'info_fg'] as $ck) {
+                if (!array_key_exists($ck, $d)) {
+                    continue;
+                }
+                $col = strtolower(in_str($d, $ck, 7));
+                if ($col === 'auto' || $col === '') {
+                    set_setting($ck, '');
+                } elseif (preg_match('/^#[0-9a-f]{6}$/D', $col)) {
+                    set_setting($ck, $col);
+                } else {
+                    json_error('Color de texto no válido.');
+                }
+            }
             if (array_key_exists('newsletter_html', $d)) {
                 set_setting('newsletter_enabled', !empty($d['newsletter_enabled']) ? '1' : '0');
                 set_setting('newsletter_label', in_str($d, 'newsletter_label', 40));
                 $raw = is_string($d['newsletter_html']) ? mb_substr($d['newsletter_html'], 0, 20000) : '';
                 set_setting('newsletter_html', newsletter_sanitize($raw));
             }
-            set_setting('event_title', in_str($d, 'event_title', 120));
-            set_setting('site_title', in_str($d, 'site_title', 150));
-            set_setting('url_prefix', $prefix);
-            set_setting('display_prefix', in_str($d, 'display_prefix', 30));
             set_setting('header_media_id', (string)(media_id_of_kind(in_int($d, 'header_media_id'), 'photo') ?? ''));
             set_setting('logo_media_id', (string)(media_id_of_kind(in_int($d, 'logo_media_id'), 'photo') ?? ''));
             set_setting('openai_model', preg_replace('/[^A-Za-z0-9._:-]/', '', in_str($d, 'openai_model', 60)) ?: 'gpt-4o-mini');

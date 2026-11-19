@@ -81,7 +81,11 @@ function info_colors(): array
         return 0.2126 * $c[0] + 0.7152 * $c[1] + 0.0722 * $c[2];
     };
     $fg = static fn(string $h): string => $lum($h) > 0.4 ? '#1d2a33' : '#ffffff';
-    return ['top' => $top, 'bg' => $bg, 'fg' => $fg($bg), 'fg_top' => $fg($top)];
+    // Color del texto: el configurado, o automático según el fondo si está vacío.
+    $fgBody = $hex('info_fg', $fg($bg));
+    $fgTop = $hex('info_fg_top', $fg($top));
+    return ['top' => $top, 'bg' => $bg, 'fg' => $fgBody, 'fg_top' => $fgTop,
+            'fg_auto' => setting('info_fg', '') === '', 'fg_top_auto' => setting('info_fg_top', '') === ''];
 }
 
 /** Botón de pantalla completa (lo gestiona assets/expo.js). */

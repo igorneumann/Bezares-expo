@@ -9,6 +9,33 @@ defined('APP_DIR') || exit; // no ejecutable directamente
  * Los productos y medios no se copian: se referencian por id (y por nombre como respaldo).
  */
 
+/** Ajustes que pertenecen al evento (se guardan y restauran con él). */
+function event_settings_current(): array
+{
+    return [
+        'event_title'    => (string)setting('event_title', ''),
+        'site_title'     => (string)setting('site_title', ''),
+        'url_prefix'     => (string)setting('url_prefix', 'bbm-t'),
+        'display_prefix' => (string)setting('display_prefix', 'BBM-t'),
+    ];
+}
+
+/** Valida y guarda los ajustes del evento. Devuelve un mensaje de error o null. */
+function event_settings_apply(array $d): ?string
+{
+    $str = static fn(string $k, int $max): string => is_scalar($d[$k] ?? null)
+        ? mb_substr(trim(preg_replace('/[\x00-\x1F\x7F]/u', '', (string)$d[$k]) ?? ''), 0, $max) : '';
+    $prefix = strtolower($str('url_prefix', 30));
+    if (!preg_match('/^[a-z][a-z0-9-]{0,28}[a-z-]$/D', $prefix)) {
+        return 'Prefijo de URL: letras minúsculas, números y guiones; no puede terminar en número.';
+    }
+    set_setting('event_title', $str('event_title', 120));
+    set_setting('site_title', $str('site_title', 150));
+    set_setting('url_prefix', $prefix);
+    set_setting('display_prefix', $str('display_prefix', 30));
+    return null;
+}
+
 function events_snapshot(): array
 {
     $tablets = [];
@@ -27,7 +54,7 @@ function events_snapshot(): array
         }
         $tablets[] = ['number' => (int)$t['number'], 'label' => $t['label'], 'active' => (int)$t['active'], 'items' => $items];
     }
-    return ['version' => 1, 'event_title' => (string)setting('event_title', ''), 'tablets' => $tablets];
+    return ['version' => 2, 'tablets' => $tablets] + event_settings_current();
 }
 
 function events_summary(array $data): array
@@ -36,6 +63,7 @@ function events_summary(array $data): array
     $active = array_filter($tablets, static fn($t) => !empty($t['active']));
     return [
         'event_title' => (string)($data['event_title'] ?? ''),
+        'url_prefix'  => (string)($data['url_prefix'] ?? ''),
         'tablets'     => count($tablets),
         'active'      => count($active),
         'products'    => array_sum(array_map(static fn($t) => count($t['items'] ?? []), $active)),
@@ -158,8 +186,12 @@ function events_restore(int $id): array
         $pdo->rollBack();
         throw $ex;
     }
-    if (isset($data['event_title']) && is_string($data['event_title'])) {
-        set_setting('event_title', mb_substr($data['event_title'], 0, 120));
+    // Títulos y prefijos (los eventos antiguos sólo guardaban el título del evento).
+    $settings = array_merge(event_settings_current(), array_filter(
+        array_intersect_key($data, event_settings_current()), 'is_string'));
+    if (event_settings_apply($settings) !== null) {
+        $warnings[] = 'El prefijo de URL guardado no es válido; se mantiene el actual.';
+        set_setting('event_title', mb_substr($settings['event_title'], 0, 120));
     }
     bump_content_version();
     return $warnings;

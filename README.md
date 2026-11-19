@@ -118,13 +118,15 @@ Enlace en el pie de la página principal → `/admin/` (usuario/contraseña, "Ma
   Casillas de selección y "Seleccionar todo" para eliminar varios ficheros a la vez.
 - **Eventos**: guarda la configuración de los tablets de cada feria (tablets activos, productos, orden, flechas,
   fotos, idiomas y título del evento) y restáurala más tarde (con copia automática de la configuración actual).
-- **Configuración**: título del evento, imagen de encabezado, logo de fondo del 3D, colores del apartado de texto
-  (franja del titular y fondo; la letra se ajusta sola), prefijos de URL, clave de OpenAI,
-  idiomas, usuarios y roles, seguridad.
+- **Configuración**: imagen de encabezado, logo de fondo del 3D, colores del apartado de texto (fondo de la
+  franja del titular y del texto, y color de la letra: automático según el fondo o elegido), newsletter,
+  clave de OpenAI, idiomas, usuarios y roles, seguridad.
+- En la pestaña **Tablets**, bloque **Evento**: título del evento, título de la web y prefijos de URL
+  (se guardan y restauran con cada evento).
 
 ### URLs de los tablets
 Compatibles con las actuales: `/bbm-t1/` (producto por defecto), `/bbm-t1a/`, `/bbm-t1b/`… (a = primer producto).
-El prefijo `bbm-t` se cambia en Configuración.
+El prefijo `bbm-t` se cambia en *Tablets > Evento*.
 
 ### Modelos STEP / OBJ
 Los tablets sólo descargan **GLB**. Al subir o escanear STEP/OBJ/glTF, el panel los convierte a GLB **en el navegador del

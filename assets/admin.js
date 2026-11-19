@@ -338,8 +338,45 @@ function renderTablets() {
       h('h2', null, 'Tablets'),
       h('span', { class: 'hint' }, 'Cada tablet activo muestra de 2 a 5 productos. La flecha indica dónde está el producto físico respecto al tablet.'),
       h('button', { class: 'btn btn-primary', disabled: state.tabletDrafts.has('new'), onclick: () => { tabletDraft(null); render(); } }, '+ Nuevo tablet')),
+    eventSettingsCard(),
     !state.products.length ? h('p', { class: 'flash flash-info' }, 'Primero crea los productos en la pestaña Productos.') : null,
     list);
+}
+
+/** Títulos y prefijos de URL del evento (se guardan y restauran con cada evento). */
+function eventSettingsCard() {
+  const s = state.settings;
+  const v = { event_title: s.event_title || '', site_title: s.site_title || '', url_prefix: s.url_prefix || '', display_prefix: s.display_prefix || '' };
+  const exUrl = h('small', null);
+  const exShow = h('small', null);
+  const examples = () => {
+    exUrl.textContent = ` (ej. ${v.url_prefix}1a)`;
+    exShow.textContent = ` (ej. ${v.display_prefix}1a)`;
+  };
+  examples();
+  const field = (key, label, hint, attrs = {}) => h('label', { class: 'field' },
+    h('span', null, label, hint),
+    h('input', { value: v[key], ...attrs, oninput: (e) => { v[key] = e.target.value; examples(); } }));
+  return h('div', { class: 'card' },
+    h('div', { class: 'panel-head' },
+      h('h3', null, 'Evento'),
+      h('span', { class: 'hint grow' }, 'Se guardan junto con los tablets en la pestaña Eventos.'),
+      h('button', { class: 'btn btn-primary btn-sm', onclick: (e) => busy(e.currentTarget, async () => {
+        const changedPrefix = v.url_prefix.trim().toLowerCase() !== (s.url_prefix || '');
+        if (changedPrefix && !(await confirmBox(`Al cambiar el prefijo de URL cambian las direcciones de todos los tablets (p. ej. /${v.url_prefix.trim().toLowerCase()}1a/). Los tablets que tengan abierta la dirección antigua dejarán de funcionar hasta que se abra la nueva. ¿Continuar?`, 'Cambiar'))) return;
+        const r = await api('tablets.settings', v);
+        Object.assign(state.settings, r.settings);
+        state.tablets = r.tablets;
+        state.tabletDrafts.clear();
+        toast('Ajustes del evento guardados');
+        render();
+      }) }, 'Guardar')),
+    h('div', { class: 'row2' },
+      field('event_title', 'Título del evento', h('small', null, ' (página principal)'), { maxlength: 120 }),
+      field('site_title', 'Título de la web', h('small', null, ' (pestaña del navegador)'), { maxlength: 150 })),
+    h('div', { class: 'row2' },
+      field('url_prefix', 'Prefijo de URL', exUrl, { maxlength: 30, pattern: '[a-z][a-z0-9-]*[a-z-]', autocapitalize: 'off', spellcheck: 'false' }),
+      field('display_prefix', 'Prefijo visible', exShow, { maxlength: 30 })));
 }
 
 function tabletCard(d) {
@@ -799,28 +836,57 @@ function contrastText(hex) {
 
 /** Colores del apartado de texto (titular, descripción y características) con vista previa. */
 function infoColorsField(s) {
-  const DEF_TOP = '#00567d';
-  const DEF_BG = '#6b7479';
+  const DEF = { info_bg_top: '#00567d', info_bg: '#6b7479', info_fg_top: 'auto', info_fg: 'auto' };
+  // Color efectivo del texto: el elegido o el automático según el fondo.
+  const textColor = (fgKey, bgKey) => (s[fgKey] && s[fgKey] !== 'auto' ? s[fgKey] : contrastText(s[bgKey]));
   const preview = h('div', { class: 'info-preview' },
     h('div', { class: 'info-preview-top' }, h('strong', null, 'TITULAR'), h('small', null, ' Subtítulo')),
     h('div', { class: 'info-preview-body' }, 'Descripción del producto…', h('ul', null, h('li', null, 'Característica principal'))));
+  const wrap = h('div', { class: 'field' });
   const paint = () => {
-    preview.querySelector('.info-preview-top').style.cssText = `background:${s.info_bg_top};color:${contrastText(s.info_bg_top)}`;
-    preview.querySelector('.info-preview-body').style.cssText = `background:${s.info_bg};color:${contrastText(s.info_bg)}`;
+    preview.querySelector('.info-preview-top').style.cssText = `background:${s.info_bg_top};color:${textColor('info_fg_top', 'info_bg_top')}`;
+    preview.querySelector('.info-preview-body').style.cssText = `background:${s.info_bg};color:${textColor('info_fg', 'info_bg')}`;
   };
-  const picker = (key, label) => h('label', { class: 'color-field' },
-    h('input', { type: 'color', value: s[key], oninput: (e) => { s[key] = e.target.value; paint(); } }), h('span', null, label));
-  queueMicrotask(paint);
-  return h('div', { class: 'field' },
-    h('span', null, 'Colores del apartado de texto', h('small', null, ' (titular, descripción y características; la letra se ajusta sola)')),
-    h('div', { class: 'row' }, picker('info_bg_top', 'Franja del titular'), picker('info_bg', 'Fondo del texto'),
-      h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: (e) => {
-        s.info_bg_top = DEF_TOP;
-        s.info_bg = DEF_BG;
-        e.currentTarget.closest('.field').querySelectorAll('input[type=color]').forEach((x, i) => { x.value = i ? DEF_BG : DEF_TOP; });
+  const bgPicker = (key, label) => h('label', { class: 'color-field' },
+    h('input', { type: 'color', value: s[key], oninput: (e) => { s[key] = e.target.value; paint(); refresh(); } }), h('span', null, label));
+  // Selector de texto con casilla "Automático" (blanco u oscuro según el fondo).
+  const fgPicker = (key, bgKey, label) => {
+    const auto = !s[key] || s[key] === 'auto';
+    const color = h('input', { type: 'color', value: auto ? contrastText(s[bgKey]) : s[key], disabled: auto,
+      oninput: (e) => { s[key] = e.target.value; paint(); } });
+    return h('div', { class: 'color-field' }, color, h('span', null, label),
+      h('label', { class: 'check inline' }, h('input', { type: 'checkbox', checked: auto, onchange: (e) => {
+        s[key] = e.target.checked ? 'auto' : color.value;
+        color.disabled = e.target.checked;
+        if (e.target.checked) color.value = contrastText(s[bgKey]);
         paint();
-      } }, 'Restablecer')),
+      } }), 'Automático'));
+  };
+  const refresh = () => {
+    // Actualiza los selectores de texto en modo automático cuando cambia el fondo.
+    wrap.querySelectorAll('[data-fg]').forEach((el) => {
+      const key = el.dataset.fg;
+      const bgKey = key === 'info_fg_top' ? 'info_bg_top' : 'info_bg';
+      if (!s[key] || s[key] === 'auto') el.querySelector('input[type=color]').value = contrastText(s[bgKey]);
+    });
+  };
+  const fgTop = fgPicker('info_fg_top', 'info_bg_top', 'Texto del titular');
+  fgTop.dataset.fg = 'info_fg_top';
+  const fgBody = fgPicker('info_fg', 'info_bg', 'Texto');
+  fgBody.dataset.fg = 'info_fg';
+  queueMicrotask(paint);
+  wrap.append(
+    h('span', null, 'Colores del apartado de texto', h('small', null, ' (titular, descripción y características)')),
+    h('div', { class: 'color-grid' },
+      h('strong', null, 'Fondo'), bgPicker('info_bg_top', 'Franja del titular'), bgPicker('info_bg', 'Fondo del texto'),
+      h('strong', null, 'Texto'), fgTop, fgBody),
+    h('div', { class: 'row-end' }, h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: () => {
+      Object.assign(s, DEF);
+      const fresh = infoColorsField(s);
+      wrap.replaceWith(fresh);
+    } }, 'Restablecer colores')),
     preview);
+  return wrap;
 }
 
 /** Botón flotante "Newsletter" de las páginas de tablet. Se guarda con "Guardar configuración". */
@@ -923,11 +989,7 @@ function renderSettings() {
     h('div', { class: 'settings-grid' },
       h('div', { class: 'card' },
         h('h3', null, 'Encabezado y páginas'),
-        inp('event_title', 'Título del evento', { maxlength: 120 }, '(página principal)'),
-        inp('site_title', 'Título de la web', { maxlength: 150 }, '(pestaña del navegador)'),
-        h('div', { class: 'row2' },
-          inp('url_prefix', 'Prefijo de URL', { maxlength: 30, pattern: '[a-z][a-z0-9-]*[a-z-]' }, `(ej. ${s.url_prefix}1a)`),
-          inp('display_prefix', 'Prefijo visible', { maxlength: 30 }, `(ej. ${s.display_prefix}1a)`)),
+        h('p', { class: 'hint' }, 'Los títulos y los prefijos de URL están en la pestaña Tablets (se guardan con cada evento).'),
         h('div', { class: 'field' }, h('span', null, 'Imagen de encabezado', h('small', null, ' (vacío = la actual de Bezares)')),
           mediaField('photo', s.header_media_id, (v) => { s.header_media_id = v; }, { label: 'Imagen por defecto' })),
         h('img', { class: 'preview-header', src: s.header_url, alt: '' }),
@@ -1096,7 +1158,7 @@ function renderEvents() {
         } }),
         h('span', { class: 'grow' }),
         h('small', { class: 'hint' }, 'Guardado ' + fmt(ev.updated_at) + (ev.created_by ? ' por ' + ev.created_by : ''))),
-      h('p', { class: 'hint' }, `Título: “${s.event_title || '—'}” · ${s.active} tablet(s) activo(s) de ${s.tablets} · ${s.products} producto(s)`),
+      h('p', { class: 'hint' }, `Título: “${s.event_title || '—'}”` + (s.url_prefix ? ` · URLs /${s.url_prefix}1a/` : '') + ` · ${s.active} tablet(s) activo(s) de ${s.tablets} · ${s.products} producto(s)`),
       h('ul', { class: 'event-detail' }, s.detail.filter((t) => t.active).map((t) =>
         h('li', null, h('strong', null, 'Tablet ' + t.number), ': ', t.products.join(' · ') || '—'))),
       h('div', { class: 'row-end' },
@@ -1128,7 +1190,7 @@ function renderEvents() {
             if (!r) return;
             state.events = r.events;
             state.tablets = r.tablets;
-            state.settings.event_title = r.event_title;
+            Object.assign(state.settings, r.event_settings);
             state.tabletDrafts.clear();
             if (r.warnings.length) {
               openModal(h('div', { class: 'confirm' },
@@ -1145,7 +1207,7 @@ function renderEvents() {
 
   return h('section', { class: 'panel' },
     h('div', { class: 'panel-head' }, h('h2', null, 'Eventos'),
-      h('span', { class: 'hint' }, 'Guarda la configuración de los tablets de cada feria (tablets activos, productos, orden, flechas, fotos, idiomas y título) para restaurarla más adelante.')),
+      h('span', { class: 'hint' }, 'Guarda la configuración de los tablets de cada feria (tablets activos, productos, orden, flechas, fotos, idiomas, títulos y prefijos de URL) para restaurarla más adelante.')),
     h('div', { class: 'card' },
       h('h3', null, 'Configuración actual'),
       h('p', { class: 'hint' }, `${current.length} tablet(s) activo(s): ` + (current.map((t) => 'Tablet ' + t.number).join(', ') || 'ninguno')),
