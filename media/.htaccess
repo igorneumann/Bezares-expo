@@ -10,7 +10,7 @@ Options -Indexes -ExecCGI
 <IfModule mod_headers.c>
     Header set X-Content-Type-Options "nosniff"
     Header set Content-Security-Policy "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; media-src 'self'; sandbox"
-    <FilesMatch "(?i)\.(stp|step|obj|mtl|gltf|bin)$">
+    <FilesMatch "(?i)\.(stp|step|stl|obj|mtl|gltf|bin)$">
         Header set Content-Disposition "attachment"
     </FilesMatch>
 </IfModule>

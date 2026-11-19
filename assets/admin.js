@@ -219,7 +219,7 @@ function mediaField(kind, value, onChange, { label, allowClear = true } = {}) {
 const ACCEPT = {
   video: '.mp4,.m4v,.webm',
   // Incluye los ficheros asociados de glTF/OBJ, que se seleccionan a la vez que el modelo.
-  model: '.glb,.gltf,.obj,.stp,.step,.bin,.mtl,.png,.jpg,.jpeg,.webp,.gif,.bmp',
+  model: '.glb,.gltf,.obj,.stp,.step,.stl,.bin,.mtl,.png,.jpg,.jpeg,.webp,.gif,.bmp',
   photo: '.jpg,.jpeg,.png,.webp,.gif,.avif,.svg',
 };
 const CHUNK = 4 * 1024 * 1024;
@@ -258,7 +258,7 @@ async function uploadFile(file, kind, { convertOf = 0, onProgress } = {}) {
  */
 async function prepareModelFiles(files) {
   const isMain = (f) => /\.(gltf|obj)$/i.test(f.name);
-  const isDirect = (f) => /\.(glb|stp|step)$/i.test(f.name);
+  const isDirect = (f) => /\.(glb|stp|step|stl)$/i.test(f.name);
   const mains = files.filter(isMain);
   const companions = files.filter((f) => !isMain(f) && !isDirect(f));
   const out = files.filter(isDirect);
@@ -702,18 +702,32 @@ function renderGallery() {
         toast('Escaneo terminado: ' + summary, 'ok', 8000);
         render();
         // Informe detallado si quedan cosas por revisar en las carpetas de importación.
-        if (x.leftover.length || x.organize_errors.length || x.skipped.length) {
+        const wp = x.wp_variants || [];
+        if (x.leftover.length || x.organize_errors.length || x.skipped.length || wp.length) {
+          const isAdmin = state.role === 'admin';
+          const delBtn = (paths, label) => isAdmin ? h('button', { class: 'btn btn-sm btn-danger', onclick: async (ev) => {
+            const btn = ev.currentTarget;
+            const r = await busy(btn, () => api('media.delete_leftovers', { paths }));
+            if (r) {
+              btn.replaceWith(h('span', { class: 'badge badge-ok' }, `${r.deleted} borrado(s)` + (r.removed_dirs ? `, ${r.removed_dirs} carpeta(s) vacía(s) eliminada(s)` : '')));
+            }
+          } }, label) : null;
+          const list = (items) => h('ul', null, items.map((t) => h('li', null, h('code', null, t))));
           await new Promise((resolve) => openModal(h('div', { class: 'confirm scan-report' },
             h('h3', null, 'Escaneo y organización de carpetas'),
             h('p', null, summary + '.'),
             x.organize_errors.length ? [h('h4', null, 'Avisos'), h('ul', null, x.organize_errors.map((t) => h('li', null, t)))] : null,
-            x.skipped.length ? [h('h4', null, 'Ficheros no válidos (no importados)'), h('ul', null, x.skipped.map((t) => h('li', null, h('code', null, t))))] : null,
+            x.skipped.length ? [h('h4', null, 'Ficheros no válidos (no importados)'), list(x.skipped)] : null,
+            wp.length ? [h('h4', null, `Copias redimensionadas de WordPress (${wp.length})`),
+              h('p', { class: 'hint' }, 'Versiones más pequeñas que WordPress generaba de fotos cuyo original sí se ha importado (la galería ya crea sus propios tamaños). No hacen falta.'),
+              delBtn(wp, 'Borrar estas copias'), list(wp)] : null,
             x.leftover.length
-              ? [h('h4', null, 'Quedan en carpetas de importación'),
-                h('p', { class: 'hint' }, 'No son medios de la galería (formato no admitido o no referenciados por ningún modelo). Revísalos y bórralos por FTP; después podrás eliminar esas carpetas.'),
-                h('ul', null, x.leftover.map((t) => h('li', null, h('code', null, t))))]
-              : h('p', { class: 'flash flash-ok' }, 'Las carpetas de importación han quedado vacías y se han eliminado.'),
-            h('div', { class: 'row-end' }, h('button', { class: 'btn btn-primary', onclick: () => closeModal() }, 'Entendido'))),
+              ? [h('h4', null, `Otros ficheros en carpetas de importación (${x.leftover.length})`),
+                h('p', { class: 'hint' }, 'No son medios de la galería: formatos no admitidos (.zip, .log, .css, .html…), .mtl o texturas de modelos que no están, etc. '
+                  + 'Revisa la lista y bórralos para poder eliminar las carpetas.'),
+                delBtn(x.leftover, 'Borrar estos ficheros'), list(x.leftover)]
+              : (!wp.length ? h('p', { class: 'flash flash-ok' }, 'Las carpetas de importación han quedado vacías y se han eliminado.') : null),
+            h('div', { class: 'row-end' }, h('button', { class: 'btn btn-primary', onclick: () => closeModal() }, 'Cerrar'))),
           { wide: true, onClose: resolve }));
         }
         const toConvert = state.media.filter((m) => m.kind === 'model' && m.status === 'needs_conversion');
@@ -724,7 +738,7 @@ function renderGallery() {
     k === 'model' && pending.length ? h('div', { class: 'flash flash-info row' },
       h('span', { class: 'grow' }, `${pending.length} modelo(s) pendientes de convertir a GLB. Los tablets sólo descargan GLB (más ligero).`),
       h('button', { class: 'btn btn-sm btn-primary', onclick: () => convertMany(pending) }, 'Convertir todos')) : null,
-    k === 'model' ? h('p', { class: 'hint' }, 'Formatos: GLB (recomendado), glTF, OBJ y STEP/STP; todos se convierten a GLB en el navegador. '
+    k === 'model' ? h('p', { class: 'hint' }, 'Formatos: GLB (recomendado), glTF, OBJ, STEP/STP y STL; todos se convierten a GLB en el navegador. '
       + 'Para glTF u OBJ selecciona a la vez el modelo y TODOS sus ficheros (.bin, .mtl, texturas). Por FTP, súbelos juntos en la misma carpeta.') : null,
     k === 'photo' && !state.settings.gd_webp ? h('p', { class: 'hint' }, 'Aviso: el servidor no genera WebP; las miniaturas se crearán en JPEG.') : null,
     list.length ? bulkBar : null,

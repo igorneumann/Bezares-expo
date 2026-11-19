@@ -5,7 +5,7 @@ defined('APP_DIR') || exit; // no ejecutable directamente
 
 const MEDIA_EXT = [
     'mp4' => 'video', 'm4v' => 'video', 'webm' => 'video',
-    'glb' => 'model', 'gltf' => 'model', 'obj' => 'model', 'stp' => 'model', 'step' => 'model',
+    'glb' => 'model', 'gltf' => 'model', 'obj' => 'model', 'stp' => 'model', 'step' => 'model', 'stl' => 'model',
     'jpg' => 'photo', 'jpeg' => 'photo', 'png' => 'photo', 'webp' => 'photo', 'gif' => 'photo', 'avif' => 'photo', 'svg' => 'photo',
 ];
 const MEDIA_FOLDERS = ['video' => 'videos', 'model' => 'models', 'photo' => 'photos'];
@@ -105,6 +105,17 @@ function media_validate_content(string $file, string $ext): ?string
             return str_starts_with(ltrim($head, "\xEF\xBB\xBF \r\n\t"), '{') ? null : 'No es un glTF válido';
         case 'stp': case 'step':
             return str_contains($head, 'ISO-10303-21') ? null : 'No es un fichero STEP válido';
+        case 'stl':
+            // ASCII ("solid …") o binario (cabecera de 80 bytes + nº de triángulos coherente con el tamaño)
+            if (stripos(ltrim($head), 'solid') === 0) {
+                return null;
+            }
+            $size = (int)filesize($file);
+            if ($size >= 84 && strlen($head) >= 84) {
+                $tri = unpack('V', substr($head, 80, 4))[1];
+                return (84 + $tri * 50 === $size) ? null : 'No es un STL válido';
+            }
+            return 'No es un STL válido';
         case 'obj':
             return (preg_match('/[\x00-\x08\x0E-\x1F]/', $head) || stripos($head, '<?php') !== false) ? 'No es un OBJ de texto válido' : null;
         case 'svg':
@@ -320,27 +331,39 @@ function media_scan(): array
             }
         )
     );
-    $gltfDirs = [];
     $files = [];
+    $byPath = [];
     foreach ($it as $f) {
         /** @var SplFileInfo $f */
         if (!$f->isFile()) {
             continue;
         }
         $files[] = $f;
-        // Carpetas con modelos glTF/OBJ: sus imágenes son texturas, no fotos de la galería.
-        if (in_array(media_ext($f->getFilename()), ['gltf', 'obj', 'mtl'], true)) {
-            $gltfDirs[$f->getPath()] = true;
-        }
+        $byPath[str_replace('\\', '/', $f->getPathname())] = true;
     }
+    // Texturas: sólo las imágenes que un .gltf o un .mtl referencian de verdad
+    // (no todas las imágenes de su carpeta, que en WordPress lo mezcla todo).
+    $textures = media_referenced_textures($files);
+    $wpVariants = [];
     foreach ($files as $f) {
         $ext = media_ext($f->getFilename());
         if (!isset(MEDIA_EXT[$ext])) {
             continue;
         }
-        // Texturas de modelos glTF: no son fotos de la galería.
-        if (MEDIA_EXT[$ext] === 'photo' && isset($gltfDirs[$f->getPath()])) {
-            continue;
+        $pathN = str_replace('\\', '/', $f->getPathname());
+        if (MEDIA_EXT[$ext] === 'photo') {
+            if (isset($textures[$pathN])) {
+                continue;
+            }
+            // Copias redimensionadas de WordPress (foto-1024x768.jpg) cuando existe el original: no se importan.
+            if (preg_match('/^(.+)-\d{2,5}x\d{2,5}\.[a-z0-9]+$/i', $f->getFilename(), $wm)) {
+                foreach (['jpg', 'jpeg', 'png', 'gif', 'webp'] as $oe) {
+                    if (isset($byPath[str_replace('\\', '/', $f->getPath()) . '/' . $wm[1] . '.' . $oe])) {
+                        $wpVariants[] = media_rel_prefix() . ltrim(substr($pathN, strlen(str_replace('\\', '/', $root))), '/');
+                        continue 2;
+                    }
+                }
+            }
         }
         $rel = media_rel_prefix() . ltrim(str_replace('\\', '/', substr($f->getPathname(), strlen($root))), '/');
         $st = db()->prepare('SELECT mtime, size FROM media WHERE path = ?');
@@ -373,7 +396,74 @@ function media_scan(): array
     if ($added || $updated || $org['moved'] || $org['bundled']) {
         bump_content_version();
     }
-    return ['added' => $added, 'updated' => $updated, 'missing' => $missing, 'skipped' => array_slice($skipped, 0, 50)] + $org;
+    // Las copias de WordPress no se cuentan como "sobrantes" desconocidos: van en su propia lista.
+    $org['leftover'] = array_values(array_diff($org['leftover'], $wpVariants));
+    return ['added' => $added, 'updated' => $updated, 'missing' => $missing, 'skipped' => array_slice($skipped, 0, 50),
+            'wp_variants' => $wpVariants] + $org;
+}
+
+/** Rutas absolutas (normalizadas con "/") de las imágenes referenciadas por ficheros .gltf o .mtl. */
+function media_referenced_textures(array $files): array
+{
+    $out = [];
+    $add = static function (string $dir, string $ref) use (&$out): void {
+        $abs = media_companion_abs($dir, $ref);
+        if ($abs) {
+            $out[str_replace('\\', '/', $abs)] = true;
+        }
+    };
+    foreach ($files as $f) {
+        /** @var SplFileInfo $f */
+        $ext = media_ext($f->getFilename());
+        if ($ext === 'gltf' && $f->getSize() < 50_000_000) {
+            $json = json_decode((string)@file_get_contents($f->getPathname()), true);
+            foreach (is_array($json) ? ($json['images'] ?? []) : [] as $img) {
+                if (is_array($img) && is_string($img['uri'] ?? null) && !str_starts_with($img['uri'], 'data:')) {
+                    $add($f->getPath(), $img['uri']);
+                }
+            }
+        } elseif ($ext === 'mtl' && $f->getSize() < 5_000_000) {
+            preg_match_all('/^\s*(?:map_\w+|bump|disp|decal|refl|norm)\s+(?:.*\s)?(\S+)\s*$/mi', (string)@file_get_contents($f->getPathname()), $m);
+            foreach ($m[1] as $ref) {
+                $add($f->getPath(), $ref);
+            }
+        }
+    }
+    return $out;
+}
+
+/**
+ * Borra ficheros sobrantes de las carpetas de importación (nunca de videos/photos/models/_cache
+ * ni ficheros registrados en la galería). Devuelve [borrados, carpetas vacías eliminadas].
+ */
+function media_delete_leftovers(array $paths): array
+{
+    $root = realpath(media_root());
+    $registered = [];
+    foreach (db()->query('SELECT path, source_path FROM media') as $r) {
+        foreach ([$r['path'], $r['source_path']] as $p) {
+            if ($p && ($a = media_abs($p)) && ($rp = realpath($a))) {
+                $registered[$rp] = true;
+            }
+        }
+    }
+    $deleted = 0;
+    foreach (array_slice($paths, 0, 5000) as $rel) {
+        if (!is_string($rel) || !($abs = media_abs($rel)) || !($real = realpath($abs)) || !is_file($real)) {
+            continue;
+        }
+        $inside = substr(str_replace('\\', '/', $real), strlen(str_replace('\\', '/', (string)$root)) + 1);
+        $top = explode('/', $inside)[0];
+        if (!$root || !str_starts_with($real, $root . DIRECTORY_SEPARATOR) || isset($registered[$real])
+            || in_array($top, ['videos', 'photos', 'models', '_cache'], true) || basename($real) === '.htaccess') {
+            continue;
+        }
+        if (@unlink($real)) {
+            $deleted++;
+        }
+    }
+    [$removedDirs] = media_cleanup_dirs();
+    return [$deleted, $removedDirs];
 }
 
 // ---------------------------------------------------------------------------

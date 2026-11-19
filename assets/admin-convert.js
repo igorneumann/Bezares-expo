@@ -12,6 +12,7 @@ import { GLTFExporter } from '/assets/vendor/three/exporters/GLTFExporter.js';
 import { GLTFLoader } from '/assets/vendor/three/loaders/GLTFLoader.js';
 import { OBJLoader } from '/assets/vendor/three/loaders/OBJLoader.js';
 import { MTLLoader } from '/assets/vendor/three/loaders/MTLLoader.js';
+import { STLLoader } from '/assets/vendor/three/loaders/STLLoader.js';
 
 const VERSION_QS = new URL(import.meta.url).search;
 const DEFAULT_MATERIAL = () => new THREE.MeshStandardMaterial({ color: 0xb4b9be, metalness: 0.55, roughness: 0.38 });
@@ -176,6 +177,28 @@ async function stepToScene(buffer, progress) {
 }
 
 // ---------------------------------------------------------------------------
+// STL (sin materiales: color por defecto o el color por cara del STL binario)
+// STL suele venir en milímetros: se escala a metros si es muy grande.
+// ---------------------------------------------------------------------------
+function stlToScene(buffer, progress) {
+  progress('procesando STL…');
+  const g = new STLLoader().parse(buffer);
+  if (!g.attributes.normal) g.computeVertexNormals();
+  const mat = DEFAULT_MATERIAL();
+  if (g.hasColors) {
+    mat.vertexColors = true;
+    mat.color.set(0xffffff);
+  }
+  const mesh = new THREE.Mesh(g, mat);
+  g.computeBoundingBox();
+  const size = g.boundingBox.getSize(new THREE.Vector3()).length();
+  if (size > 50) mesh.scale.setScalar(0.001);
+  const group = new THREE.Group();
+  group.add(mesh);
+  return group;
+}
+
+// ---------------------------------------------------------------------------
 // OBJ
 // ---------------------------------------------------------------------------
 async function objToScene(objText, mtlText, resourcePath, ctx, progress) {
@@ -254,6 +277,10 @@ export async function convertToGlb(url, ext, progress = () => {}) {
     progress('descargando STEP…');
     return exportGlb(await stepToScene(await fetchBuffer(url), progress), progress);
   }
+  if (ext === 'stl') {
+    progress('descargando STL…');
+    return exportGlb(stlToScene(await fetchBuffer(url), progress), progress);
+  }
   const ctx = makeManager(null);
   try {
     if (ext === 'obj') {
@@ -290,6 +317,9 @@ export async function convertFilesToGlb(mainFile, companions = [], progress = ()
   const ext = mainFile.name.split('.').pop().toLowerCase();
   if (ext === 'stp' || ext === 'step') {
     return exportGlb(await stepToScene(await mainFile.arrayBuffer(), progress), progress);
+  }
+  if (ext === 'stl') {
+    return exportGlb(stlToScene(await mainFile.arrayBuffer(), progress), progress);
   }
   const ctx = makeManager(companions);
   try {

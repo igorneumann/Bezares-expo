@@ -146,7 +146,7 @@ function editor_settings_payload(): array
 // Roles: los editores gestionan contenido (tablets, productos, galería);
 // la configuración, la seguridad y los usuarios son sólo para administradores.
 const ADMIN_ONLY_ACTIONS = ['settings.save', 'languages.save', 'openai.save', 'openai.test', 'gate.rotate', 'gate.write', 'security.check',
-                            'cache.purge', 'user.add', 'user.delete', 'user.role'];
+                            'cache.purge', 'media.delete_leftovers', 'user.add', 'user.delete', 'user.role'];
 if (in_array($action, ADMIN_ONLY_ACTIONS, true) && !is_admin($user)) {
     log_event('acción denegada ' . $action . ' a ' . $user['username']);
     json_error('Sólo los administradores pueden hacer esto.', 403);
@@ -417,6 +417,15 @@ try {
             db()->prepare('DELETE FROM events WHERE id = ?')->execute([(int)in_int($d, 'id')]);
             log_event('evento eliminado id=' . (int)in_int($d, 'id') . ' por ' . $user['username']);
             json_out(['ok' => true, 'events' => events_list()]);
+
+        case 'media.delete_leftovers':
+            $paths = array_values(array_filter(is_array($d['paths'] ?? null) ? $d['paths'] : [], 'is_string'));
+            if (!$paths) {
+                json_error('No hay ficheros que borrar.');
+            }
+            [$deleted, $dirs] = media_delete_leftovers($paths);
+            log_event($deleted . ' ficheros sobrantes borrados de carpetas de importación por ' . $user['username']);
+            json_out(['ok' => true, 'deleted' => $deleted, 'removed_dirs' => $dirs]);
 
         case 'media.delete_many':
             $ids = array_values(array_unique(array_filter(array_map('intval', is_array($d['ids'] ?? null) ? $d['ids'] : []))));
