@@ -133,6 +133,29 @@ a { color: var(--blue); }
 .fs-target:fullscreen .fs-btn svg { transform: rotate(180deg); }
 .fs-target:-webkit-full-screen { width: 100vw; height: 100vh; aspect-ratio: auto; }
 
+/* Newsletter: botón flotante y popup */
+body.has-nl { padding-bottom: 84px; }
+.nl-btn {
+  position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 50;
+  padding: 14px 34px; border: 0; border-radius: 999px; cursor: pointer;
+  background: var(--red); color: #fff; font-family: inherit; font-weight: 700; font-size: 1.1rem; line-height: 1; letter-spacing: .02em;
+  box-shadow: 0 6px 20px rgba(160, 20, 30, .4);
+}
+.nl-btn:active { transform: translateX(-50%) scale(.96); }
+.nl-btn:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+.nl-dialog {
+  width: min(640px, calc(100vw - 24px)); max-height: calc(100vh - 24px); padding: 44px 16px 16px;
+  border: 0; border-radius: 16px; background: #fff; box-shadow: 0 20px 60px rgba(0, 0, 0, .35); overflow: auto;
+}
+.nl-dialog::backdrop { background: rgba(0, 20, 30, .6); }
+.nl-body { display: flex; flex-direction: column; align-items: center; }
+.nl-body iframe { max-width: 100%; }
+.nl-close {
+  position: absolute; top: 6px; right: 8px; width: 40px; height: 40px; border: 0; border-radius: 50%;
+  background: #eef2f4; color: var(--ink); font-size: 1.6rem; line-height: 1; cursor: pointer;
+}
+.fs-target:fullscreen ~ .nl-btn { display: none; }
+
 /* Textos */
 .info {
   /* Colores configurables en el panel (Configuración > Encabezado y páginas) */

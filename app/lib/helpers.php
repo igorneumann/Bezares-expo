@@ -72,11 +72,12 @@ function send_security_headers(string $csp): void
     header_remove('X-Powered-By');
 }
 
-function public_csp(): string
+function public_csp(array $extraFrameOrigins = []): string
 {
+    $frames = implode(' ', array_unique(array_merge(['https://www.youtube-nocookie.com'], $extraFrameOrigins)));
     return "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-        . "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob: data:; "
-        . "worker-src 'self' blob:; font-src 'self'; frame-src https://www.youtube-nocookie.com; "
+        . "img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' blob: data:; "
+        . "worker-src 'self' blob:; font-src 'self'; frame-src " . $frames . "; "
         . "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 }
 

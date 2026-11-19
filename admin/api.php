@@ -101,6 +101,10 @@ function settings_payload(): array
 {
     return [
         'event_title'     => setting('event_title', ''),
+        'newsletter_enabled' => newsletter_enabled(),
+        'newsletter_label'   => newsletter_label(),
+        'newsletter_html'    => newsletter_html(),
+        'newsletter_default' => NEWSLETTER_DEFAULT_HTML,
         'info_bg_top'     => info_colors()['top'],
         'info_bg'         => info_colors()['bg'],
         'site_title'      => setting('site_title', ''),
@@ -435,6 +439,12 @@ try {
                 if ($col !== '') {
                     set_setting($ck, $col);
                 }
+            }
+            if (array_key_exists('newsletter_html', $d)) {
+                set_setting('newsletter_enabled', !empty($d['newsletter_enabled']) ? '1' : '0');
+                set_setting('newsletter_label', in_str($d, 'newsletter_label', 40));
+                $raw = is_string($d['newsletter_html']) ? mb_substr($d['newsletter_html'], 0, 20000) : '';
+                set_setting('newsletter_html', newsletter_sanitize($raw));
             }
             set_setting('event_title', in_str($d, 'event_title', 120));
             set_setting('site_title', in_str($d, 'site_title', 150));

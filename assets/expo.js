@@ -62,6 +62,24 @@
     if (v && v.webkitEnterFullscreen) v.webkitEnterFullscreen();
   });
 
+  // Newsletter: el contenido (iframe) se inserta al abrir el popup, así no se descarga
+  // en cada visita, y se retira al cerrar.
+  document.addEventListener('click', function (ev) {
+    var dlg = document.getElementById('nl-dialog');
+    var tpl = document.getElementById('nl-content');
+    if (!dlg || !tpl || !ev.target.closest) return;
+    if (ev.target.closest('[data-newsletter-open]')) {
+      var body = dlg.querySelector('.nl-body');
+      body.replaceChildren(tpl.content.cloneNode(true));
+      if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+    } else if (ev.target.closest('[data-newsletter-close]') || ev.target === dlg) {
+      dlg.close ? dlg.close() : dlg.removeAttribute('open');
+    }
+  });
+  document.addEventListener('close', function (ev) {
+    if (ev.target && ev.target.id === 'nl-dialog') ev.target.querySelector('.nl-body').replaceChildren();
+  }, true);
+
   // Reanudar vídeo si el navegador lo pausa al volver a la pestaña.
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState !== 'visible') return;

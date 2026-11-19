@@ -134,7 +134,8 @@ function text_features(string $text): string
 
 function page_head(string $title, string $bodyClass, array $extraHead = []): void
 {
-    send_security_headers(public_csp());
+    // Las páginas de tablet pueden incrustar el iframe de la newsletter: se permite su dominio.
+    send_security_headers(public_csp(str_contains($bodyClass, 'page-tablet') ? newsletter_frame_origins() : []));
     header('Content-Type: text/html; charset=utf-8');
     echo '<!doctype html><html lang="es"><head><meta charset="utf-8">'
         . '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
@@ -282,7 +283,7 @@ function render_tablet(int $number, ?string $letter): void
         . json_encode(array_values(array_unique(array_filter($prefetch))), JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP)
         . '</script>';
 
-    page_head(tablet_code($number, $idx) . ' | ' . $p['short_name'] . ' – Bezares SA', 'page-tablet', $head);
+    page_head(tablet_code($number, $idx) . ' | ' . $p['short_name'] . ' – Bezares SA', 'page-tablet' . (newsletter_enabled() ? ' has-nl' : ''), $head);
 
     // Sin titular visible ("BBM-t1b | FRV"): tras el encabezado va directamente el índice.
     // 1) Índice de productos del tablet
@@ -363,5 +364,6 @@ function render_tablet(int $number, ?string $letter): void
         }
         echo '</section>';
     }
+    echo newsletter_markup(); // HTML ya saneado al guardarlo en el panel
     page_foot(false);
 }

@@ -823,6 +823,22 @@ function infoColorsField(s) {
     preview);
 }
 
+/** Botón flotante "Newsletter" de las páginas de tablet. Se guarda con "Guardar configuración". */
+function newsletterCard(s) {
+  const area = h('textarea', { rows: 6, class: 'mono', spellcheck: 'false', value: s.newsletter_html, oninput: (e) => { s.newsletter_html = e.target.value; } });
+  return h('div', { class: 'card' },
+    h('h3', null, 'Newsletter'),
+    h('p', { class: 'hint' }, 'Botón rojo flotante abajo al centro en las páginas de tablet; al pulsarlo abre un popup con este contenido.'),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: !!s.newsletter_enabled, onchange: (e) => { s.newsletter_enabled = e.target.checked; } }), 'Mostrar el botón Newsletter'),
+    h('label', { class: 'field' }, h('span', null, 'Texto del botón'),
+      h('input', { value: s.newsletter_label, maxlength: 40, placeholder: 'Newsletter', oninput: (e) => { s.newsletter_label = e.target.value; } })),
+    h('label', { class: 'field' }, h('span', null, 'Contenido del popup (HTML)',
+      h('small', null, ' Se permiten iframes y enlaces https, imágenes y texto con formato; scripts y eventos se eliminan al guardar.')), area),
+    h('div', { class: 'row-end' },
+      h('button', { type: 'button', class: 'btn btn-sm btn-ghost', onclick: () => { s.newsletter_html = s.newsletter_default; area.value = s.newsletter_default; } }, 'Restablecer contenido por defecto')),
+    h('p', { class: 'hint' }, 'Pulsa "Guardar configuración" (arriba) para aplicar los cambios.'));
+}
+
 /** Clave de OpenAI: se guarda con su propio botón y se prueba contra la API al guardarla. */
 function openaiBlock(s) {
   const status = h('p', { class: 'hint' }, s.openai_key_set
@@ -918,6 +934,8 @@ function renderSettings() {
         h('div', { class: 'field' }, h('span', null, 'Logo de fondo del modelo 3D', h('small', null, ' (vacío = logo Bezares)')),
           mediaField('photo', s.logo_media_id, (v) => { s.logo_media_id = v; }, { label: 'Logo por defecto' })),
         infoColorsField(s)),
+
+      newsletterCard(s),
 
       h('div', { class: 'card' },
         h('h3', null, 'Traducción automática (ChatGPT)'),
