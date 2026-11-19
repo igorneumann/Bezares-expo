@@ -454,6 +454,34 @@ function tabletCard(d) {
   return card;
 }
 
+/**
+ * Selector de idioma de un producto del tablet: marca los idiomas sin texto y, al elegir uno,
+ * ofrece generarlo con ChatGPT y guardarlo en el producto.
+ */
+function itemLangSelect(p, value, onChange, allowEmpty, refresh) {
+  const has = (code) => code === '' || code === 'en' || (p && p.langs.includes(code));
+  return h('select', { onchange: async (e) => {
+    const sel = e.target;
+    const code = sel.value;
+    onChange(code);
+    if (!p || has(code)) return;
+    const ok = await confirmBox(`El producto “${p.short_name}” no tiene texto en ${langName(code)}. ¿Quieres generarlo ahora con ChatGPT a partir del inglés? `
+      + 'Se guardará en el producto y podrás revisarlo en la pestaña Productos.', 'Sí, generar');
+    if (!ok) { refresh(); return; }
+    toast(`Traduciendo “${p.short_name}” a ${langName(code)}…`, 'info', 0);
+    sel.disabled = true;
+    const r = await busy(null, () => api('product.translate_save', { id: p.id, lang: code }));
+    sel.disabled = false;
+    if (r) {
+      state.products = r.products;
+      toast(`Texto en ${langName(code)} generado para “${p.short_name}”. Revísalo en Productos.`, 'ok', 7000);
+    }
+    refresh();
+  } },
+  allowEmpty ? h('option', { value: '', selected: value === '' }, '—') : null,
+  state.languages.map((l) => h('option', { value: l.code, selected: l.code === value }, l.name + (has(l.code) ? '' : ' (sin texto)'))));
+}
+
 function itemRow(d, it, i, refresh) {
   const p = productById(it.product_id);
   const photo = mediaById(it.photo_media_id) || (p ? mediaById(p.photo_media_id) : null);
@@ -479,8 +507,8 @@ function itemRow(d, it, i, refresh) {
       it.photo_media_id ? h('button', { type: 'button', class: 'link-btn', onclick: () => { it.photo_media_id = null; refresh(); } }, 'Usar foto del producto') : null),
     h('div', { class: 'seg-group', role: 'group', 'aria-label': 'Posición del producto' },
       arrowBtn('none', 'Sin flecha', '–'), arrowBtn('left', 'Izquierda', '←'), arrowBtn('up', 'Arriba', '↑'), arrowBtn('right', 'Derecha', '→')),
-    h('label', { class: 'mini' }, 'Idioma 1', langSelect(it.lang1, (v) => { it.lang1 = v; })),
-    h('label', { class: 'mini' }, 'Idioma 2', langSelect(it.lang2, (v) => { it.lang2 = v; }, true)),
+    h('label', { class: 'mini' }, 'Idioma 1', itemLangSelect(p, it.lang1, (v) => { it.lang1 = v; }, false, refresh)),
+    h('label', { class: 'mini' }, 'Idioma 2', itemLangSelect(p, it.lang2, (v) => { it.lang2 = v; }, true, refresh)),
     h('label', { class: 'mini radio', title: 'Producto que se abre por defecto' },
       h('input', { type: 'radio', name: 'def-' + (d.id || 'new'), checked: !!it.is_default, onchange: () => { d.items.forEach((x, k) => { x.is_default = k === i; }); } }), 'Por defecto'),
     h('div', { class: 'item-actions' },

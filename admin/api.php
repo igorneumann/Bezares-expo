@@ -271,6 +271,38 @@ try {
             ], $lang, (string)$name);
             json_out(['ok' => true, 'translation' => $res]);
 
+        case 'product.translate_save':
+            // Genera con ChatGPT el texto de un idioma que falta (desde inglés) y lo guarda en el producto.
+            $pid = (int)in_int($d, 'id');
+            $lang = in_str($d, 'lang', 10);
+            $st = db()->prepare('SELECT name FROM languages WHERE code = ?');
+            $st->execute([$lang]);
+            $lname = $st->fetchColumn();
+            if (!$lname || $lang === 'en') {
+                json_error('Idioma no válido');
+            }
+            $p = product_full($pid);
+            if (!$p) {
+                json_error('Producto no encontrado', 404);
+            }
+            $en = $p['i18n']['en'] ?? null;
+            if (!$en || trim($en['title']) === '') {
+                json_error('El producto no tiene texto en inglés del que traducir.');
+            }
+            if (throttle_exceeded('translate:' . $user['id'], 60, 3600)) {
+                json_error('Límite de traducciones por hora alcanzado.', 429);
+            }
+            throttle_hit('translate:' . $user['id']);
+            $tr = translate_product($en, $lang, (string)$lname);
+            db()->prepare('INSERT INTO product_i18n(product_id, lang, title, description, features) VALUES(?,?,?,?,?)
+                           ON CONFLICT(product_id, lang) DO UPDATE SET title = excluded.title,
+                           description = excluded.description, features = excluded.features')
+                ->execute([$pid, $lang, mb_substr($tr['title'], 0, 300), mb_substr($tr['description'], 0, 10000), mb_substr($tr['features'], 0, 10000)]);
+            db()->prepare('UPDATE products SET updated_at = ? WHERE id = ?')->execute([time(), $pid]);
+            bump_content_version();
+            log_event('traducción ' . $lang . ' generada para producto ' . $pid . ' por ' . $user['username']);
+            json_out(['ok' => true, 'products' => products_payload()]);
+
         // ---------------- Tablets ----------------
         case 'tablet.save':
             $id = in_int($d, 'id');
