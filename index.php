@@ -21,6 +21,14 @@ $path = (string)parse_url((string)($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH
 $path = trim(rawurldecode($path), '/');
 
 if ($path === '' || $path === 'index.php') {
+    // Abierta dentro de un iframe (p. ej. cloud.bezares.com): ir directamente al panel
+    // (que muestra el login si no hay sesión). El navegador envía Sec-Fetch-Dest: iframe.
+    header('Vary: Sec-Fetch-Dest, Cookie');
+    if (($_SERVER['HTTP_SEC_FETCH_DEST'] ?? '') === 'iframe') {
+        header('Cache-Control: no-store');
+        header('Location: /admin/', true, 302);
+        exit;
+    }
     render_index();
     exit;
 }

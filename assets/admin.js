@@ -657,6 +657,7 @@ function renderGallery() {
     const n = vis.filter((m) => sel.has(m.id)).length;
     selAll.checked = vis.length > 0 && n === vis.length;
     selAll.indeterminate = n > 0 && n < vis.length;
+    selAll.disabled = vis.length === 0;
     selCount.textContent = sel.size ? `${sel.size} seleccionado(s)` : '';
     delSel.disabled = sel.size === 0;
     grid.querySelectorAll('.media-card').forEach((c) => {
@@ -741,7 +742,7 @@ function renderGallery() {
     k === 'model' ? h('p', { class: 'hint' }, 'Formatos: GLB (recomendado), glTF, OBJ, STEP/STP y STL; todos se convierten a GLB en el navegador. '
       + 'Para glTF u OBJ selecciona a la vez el modelo y TODOS sus ficheros (.bin, .mtl, texturas). Por FTP, súbelos juntos en la misma carpeta.') : null,
     k === 'photo' && !state.settings.gd_webp ? h('p', { class: 'hint' }, 'Aviso: el servidor no genera WebP; las miniaturas se crearán en JPEG.') : null,
-    list.length ? bulkBar : null,
+    bulkBar, // siempre presente (se desactiva si no hay elementos), también tras borrar
     grid);
 }
 
@@ -953,7 +954,7 @@ function infoColorsField(s) {
 
 /** Sitios de confianza que pueden incrustar las páginas públicas en un iframe. */
 function embedCard(s) {
-  const example = (o) => `<iframe src="https://expo.bezares.com/" style="width:100%;height:100vh;border:0" allow="fullscreen; autoplay; screen-wake-lock"></iframe>`;
+  const example = () => `<iframe src="https://expo.bezares.com/" style="width:100%;height:100vh;border:0" allow="fullscreen; autoplay; screen-wake-lock"></iframe>`;
   return h('div', { class: 'card' },
     h('h3', null, 'Incrustación en otras webs (iframe)'),
     h('p', { class: 'hint' }, 'Webs de confianza que pueden mostrar expo.bezares.com dentro de un iframe (portada, páginas de tablet y panel de administración). '
@@ -961,7 +962,8 @@ function embedCard(s) {
       + 'Vacío = no se permite incrustar. Añade sólo webs propias: cualquier web de la lista puede mostrar el panel.'),
     h('textarea', { rows: 4, class: 'mono', spellcheck: 'false', placeholder: 'https://cloud.bezares.com', value: s.frame_origins || '',
       oninput: (e) => { s.frame_origins = e.target.value; } }),
-    h('p', { class: 'hint' }, 'El dispositivo que muestra el iframe también necesita la cookie de autorización (abre /cookie.html en él). Ejemplo de código para la web que incrusta:'),
+    h('p', { class: 'hint' }, 'Dentro de un iframe, la portada abre directamente el panel de administración (o el acceso si no hay sesión). '
+      + 'El dispositivo necesita la cookie de autorización: si no la tiene, usa https://expo.bezares.com/cookie.html como dirección del iframe (autoriza y entra en el panel). Ejemplo:'),
     h('pre', null, example()),
     h('p', { class: 'hint' }, 'Pulsa "Guardar configuración" (arriba) para aplicar los cambios.'));
 }

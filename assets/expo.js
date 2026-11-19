@@ -2,6 +2,15 @@
 (function () {
   'use strict';
 
+  // Dentro de un iframe la portada lleva al panel de administración (respaldo por si el
+  // navegador no envía Sec-Fetch-Dest o la página salió de la caché).
+  var framed = false;
+  try { framed = window.self !== window.top; } catch (e) { framed = true; }
+  if (framed && document.documentElement && document.querySelector('body.page-index')) {
+    location.replace('/admin/');
+    return;
+  }
+
   function prefetchList() {
     var el = document.getElementById('expo-prefetch');
     if (!el) return [];

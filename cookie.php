@@ -28,4 +28,6 @@ if (setting('installed') !== '1') {
 
 gate_set_cookie();
 log_event('cookie: dispositivo autorizado (' . substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120) . ')');
-header('Location: /', true, 302);
+// Dentro de un iframe se entra directamente en el panel de administración.
+$framed = ($_SERVER['HTTP_SEC_FETCH_DEST'] ?? '') === 'iframe' || ($_GET['to'] ?? '') === 'admin';
+header('Location: ' . ($framed ? '/admin/' : '/'), true, 302);

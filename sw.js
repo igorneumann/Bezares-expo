@@ -61,7 +61,8 @@ self.addEventListener('fetch', (e) => {
   if (skip(url)) return;
   if (isAsset(url)) {
     e.respondWith(req.headers.has('range') ? rangeResponse(req, e) : cacheFirst(req));
-  } else if (req.mode === 'navigate') {
+  } else if (req.mode === 'navigate' && req.destination !== 'iframe') {
+    // Las navegaciones dentro de un iframe van directas a la red (el servidor las lleva al panel).
     e.respondWith(networkFirst(req));
   }
 });
