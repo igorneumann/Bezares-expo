@@ -69,7 +69,7 @@ function gate_htaccess_block(bool $allowInstaller = false): string
 function gate_nginx_snippet(): string
 {
     // "if" a nivel de servidor (fase rewrite): se aplica antes que las "location" de PHP de Plesk.
-    return "if (\$uri ~ \"^/(app|data)/\") { return 403; }\n"
+    return "if (\$uri ~ \"^/(app/|data/|_boot\\.php)\") { return 403; }\n"
         . "if (\$uri ~ \"/\\.(?!well-known/)\") { return 403; }\n"
         . "if (\$uri ~* \"\\.(md|sqlite|sqlite3|log|key|template|lock|part|tmp)$\") { return 403; }";
 }

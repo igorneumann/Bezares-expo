@@ -113,6 +113,9 @@ function security_check(): array
             } elseif ($s === 403 || $s === 404) {
                 $res = 'ok';
                 $detail = 'Bloqueado (' . $s . ').';
+            } elseif (($s === 200 || $s === 206) && $r['body'] === '') {
+                $res = 'warn';
+                $detail = 'Se ejecuta pero no devuelve nada (200 vacío): nginx procesa PHP sin pasar por el .htaccess. Añade las directivas nginx del panel.';
             } elseif ($s >= 500) {
                 $res = 'warn';
                 $detail = 'Error ' . $s . ': no se muestra, pero el .htaccess no parece aplicarse aquí.';
