@@ -3,6 +3,40 @@ declare(strict_types=1);
 
 defined('APP_DIR') || exit; // no ejecutable directamente
 
+/** Comprueba la clave guardada contra la API de OpenAI. Devuelve ['ok'=>bool, 'message'=>string]. */
+function openai_test_key(): array
+{
+    $key = (string)setting('openai_key', '');
+    if ($key === '') {
+        return ['ok' => false, 'message' => 'No hay clave guardada.'];
+    }
+    if (!function_exists('curl_init')) {
+        return ['ok' => false, 'message' => 'La extensión cURL de PHP no está disponible.'];
+    }
+    $ch = curl_init('https://api.openai.com/v1/models');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_CONNECTTIMEOUT => 8,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $key],
+    ]);
+    $res = curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+    if ($res === false) {
+        return ['ok' => false, 'message' => 'Sin conexión con OpenAI: ' . $err];
+    }
+    if ($code === 200) {
+        return ['ok' => true, 'message' => 'Clave válida: conexión con OpenAI correcta.'];
+    }
+    $data = json_decode((string)$res, true);
+    $msg = is_array($data) ? (string)($data['error']['message'] ?? '') : '';
+    return ['ok' => false, 'message' => 'OpenAI respondió ' . $code . ($msg !== '' ? ': ' . mb_substr($msg, 0, 200) : '')];
+}
+
 /**
  * Traduce título, descripción y características (desde inglés) usando la API de OpenAI (ChatGPT).
  * Devuelve ['title'=>..., 'description'=>..., 'features'=>...] o lanza RuntimeException.

@@ -110,6 +110,7 @@ function settings_payload(): array
         'logo_url'        => logo_image_url(),
         'openai_model'    => setting('openai_model', ''),
         'openai_key_set'  => setting('openai_key', '') !== '',
+        'openai_key_hint' => setting('openai_key', '') !== '' ? '…' . substr((string)setting('openai_key'), -4) : '',
         'mail_from'       => setting('mail_from', ''),
         'redirect_url'    => CFG['redirect_url'],
         'nginx_snippet'   => gate_nginx_snippet(),
@@ -135,7 +136,7 @@ function editor_settings_payload(): array
 
 // Roles: los editores gestionan contenido (tablets, productos, galería);
 // la configuración, la seguridad y los usuarios son sólo para administradores.
-const ADMIN_ONLY_ACTIONS = ['settings.save', 'languages.save', 'gate.rotate', 'gate.write', 'security.check',
+const ADMIN_ONLY_ACTIONS = ['settings.save', 'languages.save', 'openai.save', 'openai.test', 'gate.rotate', 'gate.write', 'security.check',
                             'cache.purge', 'user.add', 'user.delete', 'user.role'];
 if (in_array($action, ADMIN_ONLY_ACTIONS, true) && !is_admin($user)) {
     log_event('acción denegada ' . $action . ' a ' . $user['username']);
@@ -378,16 +379,31 @@ try {
             if ($from !== '') {
                 set_setting('mail_from', $from);
             }
-            $key = in_str($d, 'openai_key', 300);
-            if ($key !== '') {
-                set_setting('openai_key', $key);
-            }
-            if (!empty($d['openai_key_clear'])) {
-                set_setting('openai_key', '');
-            }
             bump_content_version();
             log_event('ajustes guardados por ' . $user['username']);
             json_out(['ok' => true, 'settings' => settings_payload()]);
+
+        case 'openai.save':
+            // Las claves actuales (sk-proj-…, sk-svcacct-…) superan los 160 caracteres: no recortar.
+            $key = preg_replace('/\s+/', '', (string)($d['key'] ?? '')) ?? '';
+            if ($key === '') {
+                set_setting('openai_key', '');
+                log_event('clave OpenAI borrada por ' . $user['username']);
+                json_out(['ok' => true, 'settings' => settings_payload()]);
+            }
+            if (!preg_match('/^sk-[A-Za-z0-9_\-]{16,1000}$/D', $key)) {
+                json_error('La clave no tiene el formato de una clave de OpenAI (empieza por "sk-").');
+            }
+            $model = preg_replace('/[^A-Za-z0-9._:-]/', '', in_str($d, 'model', 60));
+            set_setting('openai_key', $key);
+            if ($model !== '') {
+                set_setting('openai_model', $model);
+            }
+            log_event('clave OpenAI guardada por ' . $user['username']);
+            json_out(['ok' => true, 'settings' => settings_payload(), 'test' => openai_test_key()]);
+
+        case 'openai.test':
+            json_out(['ok' => true, 'test' => openai_test_key()]);
 
         case 'languages.save':
             $list = is_array($d['languages'] ?? null) ? $d['languages'] : [];

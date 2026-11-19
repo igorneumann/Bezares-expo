@@ -715,6 +715,52 @@ function passwordCard() {
 
 const ROLE_LABEL = { admin: 'Administrador', editor: 'Editor de contenido' };
 
+/** Clave de OpenAI: se guarda con su propio botón y se prueba contra la API al guardarla. */
+function openaiBlock(s) {
+  const status = h('p', { class: 'hint' }, s.openai_key_set
+    ? [h('span', { class: 'badge badge-ok' }, 'Clave guardada'), ' termina en ', h('code', null, s.openai_key_hint)]
+    : h('span', { class: 'badge badge-warn' }, 'Sin clave: las traducciones automáticas no funcionarán'));
+  // Campo de texto (no "password") con autocompletado desactivado: evita que el navegador
+  // lo rellene con la contraseña del panel.
+  const keyInput = h('input', { type: 'text', name: 'openai-api-key', autocomplete: 'off', spellcheck: 'false', 'data-lpignore': 'true',
+    class: 'mono', placeholder: s.openai_key_set ? 'Pega una clave nueva para sustituirla' : 'sk-…' });
+  const modelInput = h('input', { name: 'openai-model', value: s.openai_model || 'gpt-4o-mini', maxlength: 60, autocomplete: 'off' });
+  const showTest = (t) => {
+    if (!t) return;
+    status.append(h('br'), h('span', { class: 'badge ' + (t.ok ? 'badge-ok' : 'badge-err') }, t.ok ? '✔' : '✖'), ' ', t.message);
+  };
+  return h('div', null,
+    h('label', { class: 'field' }, h('span', null, 'Clave API de OpenAI'), keyInput),
+    h('label', { class: 'field' }, h('span', null, 'Modelo'), modelInput),
+    status,
+    h('div', { class: 'row-end' },
+      s.openai_key_set ? h('button', { class: 'btn btn-sm btn-ghost btn-danger', onclick: async (e) => {
+        if (!(await confirmBox('¿Borrar la clave de OpenAI guardada?', 'Borrar', true))) return;
+        const r = await busy(e.currentTarget, () => api('openai.save', { key: '' }));
+        if (r) { state.settings = r.settings; toast('Clave borrada'); render(); }
+      } }, 'Borrar clave') : null,
+      s.openai_key_set ? h('button', { class: 'btn btn-sm', onclick: (e) => busy(e.currentTarget, async () => {
+        const r = await api('openai.test');
+        toast(r.test.message, r.test.ok ? 'ok' : 'error', 7000);
+      }) }, 'Probar clave') : null,
+      h('button', { class: 'btn btn-sm btn-primary', onclick: (e) => busy(e.currentTarget, async () => {
+        const key = keyInput.value.trim();
+        if (!key && !s.openai_key_set) { toast('Pega la clave de OpenAI', 'error'); return; }
+        if (!key) {
+          // Sólo cambia el modelo
+          const r = await api('settings.save', { ...state.settings, openai_model: modelInput.value });
+          state.settings = r.settings;
+          toast('Modelo guardado');
+          render();
+          return;
+        }
+        const r = await api('openai.save', { key, model: modelInput.value });
+        state.settings = r.settings;
+        render();
+        toast(r.test.ok ? 'Clave guardada y verificada' : 'Clave guardada, pero la prueba ha fallado: ' + r.test.message, r.test.ok ? 'ok' : 'error', 9000);
+      }) }, 'Guardar clave')));
+}
+
 function renderSettings() {
   if (state.role !== 'admin') {
     return h('section', { class: 'panel settings' },
@@ -766,9 +812,7 @@ function renderSettings() {
 
       h('div', { class: 'card' },
         h('h3', null, 'Traducción automática (ChatGPT)'),
-        inp('openai_key', 'Clave API de OpenAI', { type: 'password', autocomplete: 'off', placeholder: s.openai_key_set ? '•••••••• (configurada; escribe para cambiarla)' : 'sk-…' }),
-        s.openai_key_set ? h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: (e) => { s.openai_key_clear = e.target.checked; } }), 'Borrar la clave guardada') : null,
-        inp('openai_model', 'Modelo', { maxlength: 60, placeholder: 'gpt-4o-mini' }),
+        openaiBlock(s),
         h('h3', null, 'Idiomas disponibles'),
         langList,
         h('div', { class: 'row-end' },
