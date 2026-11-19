@@ -8,7 +8,8 @@ declare(strict_types=1);
  */
 require __DIR__ . '/_boot.php';
 
-send_security_headers("default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+// Puede abrirse dentro del iframe de un sitio de confianza (p. ej. cloud.bezares.com).
+send_security_headers("default-src 'none'; base-uri 'none'; frame-ancestors " . frame_ancestors_value());
 header('Cache-Control: no-store');
 header('X-Robots-Tag: noindex, nofollow');
 

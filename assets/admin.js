@@ -889,6 +889,21 @@ function infoColorsField(s) {
   return wrap;
 }
 
+/** Sitios de confianza que pueden incrustar las páginas públicas en un iframe. */
+function embedCard(s) {
+  const example = (o) => `<iframe src="https://expo.bezares.com/" style="width:100%;height:100vh;border:0" allow="fullscreen; autoplay; screen-wake-lock"></iframe>`;
+  return h('div', { class: 'card' },
+    h('h3', null, 'Incrustación en otras webs (iframe)'),
+    h('p', { class: 'hint' }, 'Webs de confianza que pueden mostrar expo.bezares.com dentro de un iframe (portada y páginas de tablet). '
+      + 'Una por línea, con el formato https://dominio.com (sin ruta). Se admite https://*.dominio.com para todos sus subdominios. '
+      + 'Vacío = no se permite incrustar. El panel de administración nunca se puede incrustar.'),
+    h('textarea', { rows: 4, class: 'mono', spellcheck: 'false', placeholder: 'https://cloud.bezares.com', value: s.frame_origins || '',
+      oninput: (e) => { s.frame_origins = e.target.value; } }),
+    h('p', { class: 'hint' }, 'El dispositivo que muestra el iframe también necesita la cookie de autorización (abre /cookie.html en él). Ejemplo de código para la web que incrusta:'),
+    h('pre', null, example()),
+    h('p', { class: 'hint' }, 'Pulsa "Guardar configuración" (arriba) para aplicar los cambios.'));
+}
+
 /** Botón flotante "Newsletter" de las páginas de tablet. Se guarda con "Guardar configuración". */
 function newsletterCard(s) {
   const area = h('textarea', { rows: 6, class: 'mono', spellcheck: 'false', value: s.newsletter_html, oninput: (e) => { s.newsletter_html = e.target.value; } });
@@ -998,6 +1013,8 @@ function renderSettings() {
         infoColorsField(s)),
 
       newsletterCard(s),
+
+      embedCard(s),
 
       h('div', { class: 'card' },
         h('h3', null, 'Traducción automática (ChatGPT)'),

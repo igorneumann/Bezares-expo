@@ -69,7 +69,8 @@ RewriteRule ^ index.php [L,QSA]
     Header always unset X-Powered-By
     Header always set X-Content-Type-Options "nosniff"
     Header always set Referrer-Policy "same-origin"
-    Header always set X-Frame-Options "DENY"
+    # X-Frame-Options / frame-ancestors los envía PHP en cada página (lista de sitios de
+    # confianza configurable en el panel); aquí no se fuerza para no bloquear el iframe.
     Header always set Strict-Transport-Security "max-age=31536000"
     Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 

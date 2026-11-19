@@ -101,6 +101,7 @@ function settings_payload(): array
 {
     return [
         'event_title'     => setting('event_title', ''),
+        'frame_origins'   => implode("\n", trusted_frame_origins()),
         'newsletter_enabled' => newsletter_enabled(),
         'newsletter_label'   => newsletter_label(),
         'newsletter_html'    => newsletter_html(),
@@ -447,6 +448,17 @@ try {
                 if ($col !== '') {
                     set_setting($ck, $col);
                 }
+            }
+            if (array_key_exists('frame_origins', $d)) {
+                [$origins, $bad] = parse_frame_origins(is_string($d['frame_origins']) ? mb_substr($d['frame_origins'], 0, 4000) : '');
+                if ($bad) {
+                    json_error('URL de confianza no válida: ' . implode(', ', array_slice($bad, 0, 5))
+                        . '. Usa el formato https://dominio.com (sin ruta), o https://*.dominio.com.');
+                }
+                if (count($origins) > 30) {
+                    json_error('Máximo 30 sitios de confianza.');
+                }
+                set_setting('frame_origins', implode(' ', $origins));
             }
             // Color del texto: "auto" (según el fondo) o #rrggbb
             foreach (['info_fg_top', 'info_fg'] as $ck) {

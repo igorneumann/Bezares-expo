@@ -62,7 +62,11 @@ function send_security_headers(string $csp): void
 {
     header('Content-Security-Policy: ' . $csp);
     header('X-Content-Type-Options: nosniff');
-    header('X-Frame-Options: DENY');
+    // X-Frame-Options no admite listas de sitios: sólo se envía si nadie puede incrustar la
+    // página; si hay sitios de confianza manda frame-ancestors de la CSP.
+    if (str_contains($csp, "frame-ancestors 'none'")) {
+        header('X-Frame-Options: DENY');
+    }
     header('Referrer-Policy: same-origin');
     header('Cross-Origin-Opener-Policy: same-origin');
     header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()');
@@ -78,7 +82,43 @@ function public_csp(array $extraFrameOrigins = []): string
     return "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
         . "img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' blob: data:; "
         . "worker-src 'self' blob:; font-src 'self'; frame-src " . $frames . "; "
-        . "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+        . "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors " . frame_ancestors_value();
+}
+
+/** Sitios de confianza que pueden incrustar las páginas públicas en un iframe. */
+function trusted_frame_origins(): array
+{
+    $v = setting('frame_origins', null);
+    $v = $v === null ? 'https://cloud.bezares.com' : (string)$v;
+    return array_values(array_filter(explode(' ', $v), static fn($o) => $o !== ''));
+}
+
+function frame_ancestors_value(): string
+{
+    $list = trusted_frame_origins();
+    return $list ? "'self' " . implode(' ', $list) : "'none'";
+}
+
+/**
+ * Valida una lista de orígenes (uno por línea o separados por espacios/comas).
+ * Acepta https://dominio[:puerto] y https://*.dominio. Devuelve [lista normalizada, errores].
+ */
+function parse_frame_origins(string $text): array
+{
+    $ok = [];
+    $errors = [];
+    foreach (preg_split('/[\s,;]+/', trim($text)) ?: [] as $raw) {
+        if ($raw === '') {
+            continue;
+        }
+        $o = strtolower(rtrim($raw, '/'));
+        if (preg_match('~^https://(\*\.)?([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}(:\d{1,5})?$~D', $o)) {
+            $ok[$o] = true;
+        } else {
+            $errors[] = $raw;
+        }
+    }
+    return [array_keys($ok), $errors];
 }
 
 function admin_csp(string $extraScriptHash = ''): string
