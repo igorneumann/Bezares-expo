@@ -204,6 +204,13 @@ function attempt_login(string $login, string $password, bool $remember): array
     return [true, ''];
 }
 
+/** Usuario válido: nombre simple (letras, números, . _ -) o una dirección de email. */
+function valid_username(string $u): bool
+{
+    return (bool)preg_match('/^[A-Za-z0-9._-]{3,40}$/D', $u)
+        || (mb_strlen($u) <= 150 && filter_var($u, FILTER_VALIDATE_EMAIL) !== false);
+}
+
 function password_policy_error(string $p): ?string
 {
     if (mb_strlen($p) < 10) {

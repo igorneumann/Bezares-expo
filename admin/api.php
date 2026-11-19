@@ -458,11 +458,14 @@ try {
             json_out(['ok' => true]);
 
         case 'user.add':
-            $u = in_str($d, 'username', 40);
+            $u = in_str($d, 'username', 150);
             $em = in_str($d, 'email', 150);
+            if ($em === '' && filter_var($u, FILTER_VALIDATE_EMAIL)) {
+                $em = $u; // usuario = email
+            }
             $pw = (string)($d['password'] ?? '');
             $role = ($d['role'] ?? '') === 'admin' ? 'admin' : 'editor';
-            if (!preg_match('/^[A-Za-z0-9._-]{3,40}$/', $u) || !filter_var($em, FILTER_VALIDATE_EMAIL)) {
+            if (!valid_username($u) || !filter_var($em, FILTER_VALIDATE_EMAIL)) {
                 json_error('Usuario o email no válidos.');
             }
             if ($err = password_policy_error($pw)) {

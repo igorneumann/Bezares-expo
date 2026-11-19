@@ -49,8 +49,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $email = trim((string)($_POST['email'] ?? ''));
     $pass = (string)($_POST['password'] ?? '');
     $pass2 = (string)($_POST['password2'] ?? '');
-    if (!preg_match('/^[A-Za-z0-9._-]{3,40}$/', $user)) {
-        $errors[] = 'Usuario: 3-40 caracteres (letras, números, . _ -).';
+    // Si el usuario es un email y no se ha indicado otro, se usa también como email de recuperación.
+    if ($email === '' && filter_var($user, FILTER_VALIDATE_EMAIL)) {
+        $email = $user;
+    }
+    if (!valid_username($user)) {
+        $errors[] = 'Usuario: tu email o un nombre de 3-40 caracteres (letras, números, . _ -).';
     }
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $errors[] = 'Email no válido.';
@@ -113,8 +117,8 @@ button{margin-top:20px;width:100%;padding:12px;border:0;border-radius:8px;backgr
 <input type="hidden" name="csrf" value="<?= e(csrf_token()) ?>">
 <label for="k">Clave de instalación</label><input id="k" name="install_key" required autocomplete="off">
 <small>Está en el fichero <code>install.key</code> de la carpeta de datos: <code><?= e($dataLocation) ?></code> (accesible por FTP o el Administrador de archivos de Plesk).</small>
-<label for="u">Usuario administrador</label><input id="u" name="username" required value="<?= e($_POST['username'] ?? '') ?>">
-<label for="m">Email (para recuperar la contraseña)</label><input id="m" type="email" name="email" required value="<?= e($_POST['email'] ?? '') ?>">
+<label for="u">Usuario administrador (puede ser tu email)</label><input id="u" name="username" required maxlength="150" autocomplete="username" value="<?= e($_POST['username'] ?? '') ?>">
+<label for="m">Email para recuperar la contraseña (vacío = el del usuario)</label><input id="m" type="email" name="email" maxlength="150" value="<?= e($_POST['email'] ?? '') ?>">
 <label for="p">Contraseña (mín. 10 caracteres)</label><input id="p" type="password" name="password" required minlength="10" autocomplete="new-password">
 <label for="p2">Repetir contraseña</label><input id="p2" type="password" name="password2" required minlength="10" autocomplete="new-password">
 <small>Para autorizar cada tablet basta con abrir expo.bezares.com/cookie.html en él.</small>

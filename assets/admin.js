@@ -837,8 +837,8 @@ function renderSettings() {
                 if (r) { state.users = r.users; render(); }
               } }, '✕')]))),
         h('details', null, h('summary', null, 'Añadir usuario'),
-          h('label', { class: 'field' }, h('span', null, 'Usuario'), h('input', { autocomplete: 'off', oninput: (e) => { nu.username = e.target.value; } })),
-          h('label', { class: 'field' }, h('span', null, 'Email'), h('input', { type: 'email', autocomplete: 'off', oninput: (e) => { nu.email = e.target.value; } })),
+          h('label', { class: 'field' }, h('span', null, 'Usuario', h('small', null, ' (puede ser su email)')), h('input', { autocomplete: 'off', maxlength: 150, oninput: (e) => { nu.username = e.target.value; } })),
+          h('label', { class: 'field' }, h('span', null, 'Email', h('small', null, ' (vacío = el del usuario)')), h('input', { type: 'email', autocomplete: 'off', oninput: (e) => { nu.email = e.target.value; } })),
           h('label', { class: 'field' }, h('span', null, 'Rol'), h('select', { onchange: (e) => { nu.role = e.target.value; } },
             h('option', { value: 'editor', selected: true }, ROLE_LABEL.editor), h('option', { value: 'admin' }, ROLE_LABEL.admin))),
           h('label', { class: 'field' }, h('span', null, 'Contraseña (mín. 10)'), h('input', { type: 'password', autocomplete: 'new-password', oninput: (e) => { nu.password = e.target.value; } })),
