@@ -49,7 +49,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $email = trim((string)($_POST['email'] ?? ''));
     $pass = (string)($_POST['password'] ?? '');
     $pass2 = (string)($_POST['password2'] ?? '');
-    $code = (string)($_POST['access_code'] ?? '');
     if (!preg_match('/^[A-Za-z0-9._-]{3,40}$/', $user)) {
         $errors[] = 'Usuario: 3-40 caracteres (letras, números, . _ -).';
     }
@@ -62,16 +61,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if ($pass !== $pass2) {
         $errors[] = 'Las contraseñas no coinciden.';
     }
-    if (mb_strlen($code) < 6) {
-        $errors[] = 'El código de acceso de dispositivos debe tener al menos 6 caracteres.';
-    }
     if (!$errors) {
         $pdo = db();
         $pdo->beginTransaction();
-        $pdo->prepare('INSERT INTO users(username, email, pass_hash, created_at) VALUES(?,?,?,?)')
+        $pdo->prepare("INSERT INTO users(username, email, pass_hash, role, created_at) VALUES(?,?,?,'admin',?)")
             ->execute([$user, $email, password_hash($pass, PASSWORD_DEFAULT), time()]);
         $uid = (int)$pdo->lastInsertId();
-        set_setting('access_code_hash', password_hash($code, PASSWORD_DEFAULT));
         set_setting('device_token', random_token(24));
         set_setting('installed', '1');
         // Tablets iniciales 1-7 (como en la web actual), sin productos.
@@ -122,7 +117,6 @@ button{margin-top:20px;width:100%;padding:12px;border:0;border-radius:8px;backgr
 <label for="m">Email (para recuperar la contraseña)</label><input id="m" type="email" name="email" required value="<?= e($_POST['email'] ?? '') ?>">
 <label for="p">Contraseña (mín. 10 caracteres)</label><input id="p" type="password" name="password" required minlength="10" autocomplete="new-password">
 <label for="p2">Repetir contraseña</label><input id="p2" type="password" name="password2" required minlength="10" autocomplete="new-password">
-<label for="c">Código de acceso para autorizar tablets (cookie.html, mín. 6)</label><input id="c" type="password" name="access_code" required minlength="6" autocomplete="new-password">
-<small>Se pedirá en expo.bezares.com/cookie.html para añadir la cookie de autorización a cada tablet.</small>
+<small>Para autorizar cada tablet basta con abrir expo.bezares.com/cookie.html en él.</small>
 <button type="submit">Instalar</button>
 </form></main></body></html>

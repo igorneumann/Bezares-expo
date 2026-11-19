@@ -111,7 +111,6 @@ function settings_payload(): array
         'openai_model'    => setting('openai_model', ''),
         'openai_key_set'  => setting('openai_key', '') !== '',
         'mail_from'       => setting('mail_from', ''),
-        'access_code_set' => setting('access_code_hash', '') !== '',
         'redirect_url'    => CFG['redirect_url'],
         'nginx_snippet'   => gate_nginx_snippet(),
         'htaccess_ok'     => gate_htaccess_ok(),
@@ -122,14 +121,37 @@ function settings_payload(): array
     ];
 }
 
+function users_payload(): array
+{
+    return db()->query('SELECT id, username, email, role, last_login FROM users ORDER BY username')->fetchAll();
+}
+
+/** Ajustes visibles para un editor (sin datos de seguridad). */
+function editor_settings_payload(): array
+{
+    $s = settings_payload();
+    return array_intersect_key($s, array_flip(['header_url', 'logo_url', 'max_upload_mb', 'gd_webp', 'url_prefix', 'display_prefix']));
+}
+
+// Roles: los editores gestionan contenido (tablets, productos, galería);
+// la configuración, la seguridad y los usuarios son sólo para administradores.
+const ADMIN_ONLY_ACTIONS = ['settings.save', 'languages.save', 'gate.rotate', 'gate.write', 'security.check',
+                            'cache.purge', 'user.add', 'user.delete', 'user.role'];
+if (in_array($action, ADMIN_ONLY_ACTIONS, true) && !is_admin($user)) {
+    log_event('acción denegada ' . $action . ' a ' . $user['username']);
+    json_error('Sólo los administradores pueden hacer esto.', 403);
+}
+
 // ---------------------------------------------------------------------------
 try {
     switch ($action) {
 
         case 'bootstrap':
-            $users = db()->query('SELECT id, username, email, last_login FROM users ORDER BY username')->fetchAll();
-            json_out(['ok' => true, 'me' => (int)$user['id'], 'settings' => settings_payload(), 'languages' => languages(),
-                      'tablets' => tablets_payload(), 'products' => products_payload(), 'media' => media_payload(), 'users' => $users]);
+            $admin = is_admin($user);
+            json_out(['ok' => true, 'me' => (int)$user['id'], 'role' => $user['role'],
+                      'settings' => $admin ? settings_payload() : editor_settings_payload(), 'languages' => languages(),
+                      'tablets' => tablets_payload(), 'products' => products_payload(), 'media' => media_payload(),
+                      'users' => $admin ? users_payload() : [['id' => (int)$user['id'], 'username' => $user['username'], 'email' => $user['email'], 'role' => $user['role']]]]);
 
         // ---------------- Productos ----------------
         case 'product.get':
@@ -363,13 +385,6 @@ try {
             if (!empty($d['openai_key_clear'])) {
                 set_setting('openai_key', '');
             }
-            $code = (string)($d['access_code'] ?? '');
-            if ($code !== '') {
-                if (mb_strlen($code) < 6 || mb_strlen($code) > 100) {
-                    json_error('El código de acceso debe tener entre 6 y 100 caracteres.');
-                }
-                set_setting('access_code_hash', password_hash($code, PASSWORD_DEFAULT));
-            }
             bump_content_version();
             log_event('ajustes guardados por ' . $user['username']);
             json_out(['ok' => true, 'settings' => settings_payload()]);
@@ -402,7 +417,11 @@ try {
             $ok = gate_rotate_token();
             gate_set_cookie();
             log_event('token de dispositivos regenerado por ' . $user['username']);
-            json_out(['ok' => true, 'written' => $ok, 'settings' => settings_payload()]);
+            // Verificación obligatoria tras la rotación: confirma que la puerta (incluidos
+            // los estáticos) aplica ya el token nuevo.
+            @set_time_limit(120);
+            session_write_close();
+            json_out(['ok' => true, 'written' => $ok, 'settings' => settings_payload(), 'report' => security_check()]);
 
         case 'gate.write':
             json_out(['ok' => true, 'written' => gate_write_htaccess(), 'settings' => settings_payload()]);
@@ -432,7 +451,9 @@ try {
                 json_error($err);
             }
             db()->prepare('UPDATE users SET pass_hash = ? WHERE id = ?')->execute([password_hash($new, PASSWORD_DEFAULT), $user['id']]);
-            db()->prepare('DELETE FROM remember_tokens WHERE user_id = ?')->execute([$user['id']]);
+            // Cierra todas las demás sesiones del usuario; la actual sigue activa.
+            invalidate_user_sessions((int)$user['id']);
+            refresh_session_version((int)$user['id']);
             log_event('contraseña cambiada ' . $user['username']);
             json_out(['ok' => true]);
 
@@ -440,6 +461,7 @@ try {
             $u = in_str($d, 'username', 40);
             $em = in_str($d, 'email', 150);
             $pw = (string)($d['password'] ?? '');
+            $role = ($d['role'] ?? '') === 'admin' ? 'admin' : 'editor';
             if (!preg_match('/^[A-Za-z0-9._-]{3,40}$/', $u) || !filter_var($em, FILTER_VALIDATE_EMAIL)) {
                 json_error('Usuario o email no válidos.');
             }
@@ -447,13 +469,24 @@ try {
                 json_error($err);
             }
             try {
-                db()->prepare('INSERT INTO users(username, email, pass_hash, created_at) VALUES(?,?,?,?)')
-                    ->execute([$u, $em, password_hash($pw, PASSWORD_DEFAULT), time()]);
+                db()->prepare('INSERT INTO users(username, email, pass_hash, role, created_at) VALUES(?,?,?,?,?)')
+                    ->execute([$u, $em, password_hash($pw, PASSWORD_DEFAULT), $role, time()]);
             } catch (PDOException) {
                 json_error('Ese usuario ya existe.');
             }
-            log_event('usuario creado ' . $u . ' por ' . $user['username']);
-            json_out(['ok' => true, 'users' => db()->query('SELECT id, username, email, last_login FROM users ORDER BY username')->fetchAll()]);
+            log_event('usuario creado ' . $u . ' (' . $role . ') por ' . $user['username']);
+            json_out(['ok' => true, 'users' => users_payload()]);
+
+        case 'user.role':
+            $uid = (int)in_int($d, 'id');
+            $role = ($d['role'] ?? '') === 'admin' ? 'admin' : 'editor';
+            if ($uid === (int)$user['id']) {
+                json_error('No puedes cambiar tu propio rol.');
+            }
+            db()->prepare('UPDATE users SET role = ? WHERE id = ?')->execute([$role, $uid]);
+            invalidate_user_sessions($uid); // aplica el nuevo rol de inmediato
+            log_event('rol de usuario id=' . $uid . ' cambiado a ' . $role . ' por ' . $user['username']);
+            json_out(['ok' => true, 'users' => users_payload()]);
 
         case 'user.delete':
             $uid = (int)in_int($d, 'id');
@@ -462,7 +495,7 @@ try {
             }
             db()->prepare('DELETE FROM users WHERE id = ?')->execute([$uid]);
             log_event('usuario eliminado id=' . $uid . ' por ' . $user['username']);
-            json_out(['ok' => true, 'users' => db()->query('SELECT id, username, email, last_login FROM users ORDER BY username')->fetchAll()]);
+            json_out(['ok' => true, 'users' => users_payload()]);
 
         default:
             json_error('Acción desconocida', 404);

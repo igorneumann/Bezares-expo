@@ -9,7 +9,7 @@ La raíz del repositorio **es** `httpdocs`: Plesk lo despliega tal cual desde Gi
 ```
 / (httpdocs)
   index.php          → página principal y páginas de tablet
-  cookie.html/.php   → autorizar un tablet
+  cookie.php         → atiende /cookie.html: autoriza el tablet y redirige a la portada
   install.php        → instalador (sólo funciona una vez)
   sw.js              → service worker (caché sin conexión)
   _boot.php          → arranque común (no accesible por web)
@@ -45,7 +45,7 @@ falta (por ejemplo tras un despliegue).
 4. Asegura la carpeta (sección siguiente).
 5. Abre **https://expo.bezares.com/install.php**. Eso crea el fichero `install.key` en la carpeta de datos
    (`private/expo-data/` o `httpdocs/app/data/`); ábrelo con el Administrador de archivos de Plesk o por FTP y copia la clave.
-6. Completa el instalador: clave, usuario, email, contraseña y **código de acceso de dispositivos**. Al terminar
+6. Completa el instalador: clave, usuario, email y contraseña. Al terminar
    autoriza tu navegador, te lleva a *Configuración* y se desactiva para siempre.
 7. Pulsa **🛡 Verificar seguridad** en *Configuración*: todo debe salir en verde.
 
@@ -63,8 +63,8 @@ se protege en tres capas. Haz los pasos 1 y 2 una vez:
    - Deja activado el **modo proxy** (Apache detrás de nginx) para que se lean los `.htaccess`.
 2. **Directivas nginx adicionales** (misma página, abajo): pega el bloque que muestra el panel en
    *Configuración > Acceso de dispositivos > Directivas nginx para Plesk*. Bloquea `app/`, ficheros ocultos y
-   extensiones sensibles directamente en nginx y repite la puerta de cookie. **Hay que actualizarlo si pulsas
-   "Revocar todos los dispositivos"** (cambia el token).
+   extensiones sensibles directamente en nginx. **No contiene ningún secreto**: no hay que tocarlo nunca más,
+   tampoco al revocar dispositivos (la puerta de cookie la aplica sólo Apache con el `.htaccess` generado).
 3. Automático (no requiere nada): `app/.htaccess` con `Require all denied`, reglas del `/.htaccess` generado
    (`app/`, ficheros ocultos, `.md`, `.sqlite`, `.log`, `.key`…) y una comprobación en cada fichero PHP interno que
    impide ejecutarlo directamente.
@@ -85,9 +85,22 @@ y comprueba que **sin** cookie la página, el panel y un fichero estático redir
 ## Uso diario
 
 ### Autorizar un tablet
-En cada tablet abre **https://expo.bezares.com/cookie.html**, escribe el código de acceso y pulsa *Autorizar*.
+En cada tablet abre **https://expo.bezares.com/cookie.html**: añade la cookie y redirige a la portada automáticamente,
+sin que el usuario tenga que hacer nada. **Cualquiera que conozca esa dirección queda autorizado**, así que no la publiques.
 La cookie dura 400 días (máximo permitido por los navegadores). Para revocar todos los tablets:
-*Configuración > Revocar todos los dispositivos* (luego hay que volver a autorizarlos y actualizar las directivas nginx).
+*Configuración > Revocar todos los dispositivos* (luego hay que volver a abrir /cookie.html en cada uno). La revocación
+lanza la verificación de seguridad automáticamente. Los tablets conectados borran su contenido guardado al detectar la
+revocación; sin conexión, el contenido guardado deja de mostrarse a los 7 días de la última autorización confirmada.
+
+### Roles
+- **Administrador**: todo (configuración, seguridad, usuarios, contenido).
+- **Editor de contenido**: tablets, productos y galería; sólo puede cambiar su propia contraseña.
+
+Cambiar una contraseña (o recuperarla, o cambiar el rol) cierra todas las sesiones abiertas de ese usuario.
+
+### Límites de subida
+Configurables en `app/config.php` (ver `config.sample.php`): 2 GB por fichero, 30 GB de galería en total,
+10 GB por usuario y día, 4 GB de subidas en curso, 3 subidas simultáneas por usuario y 2 GB de disco libre mínimo.
 
 Recomendado en cada tablet: abrir la web en Chrome y "Añadir a pantalla de inicio" (se abre a pantalla completa).
 
@@ -103,7 +116,7 @@ Enlace en el pie de la página principal → `/admin/` (usuario/contraseña, "Ma
 - **Galería**: Vídeos, Modelos 3D (GLB, glTF, OBJ, STEP/STP; posición, tamaño, luminosidad, sombra y velocidad de giro
   con vista previa en vivo) y Fotos. Botón **Escanear carpeta FTP** para registrar lo subido por FTP a `/media` y subcarpetas.
 - **Configuración**: título del evento, imagen de encabezado, logo de fondo del 3D, prefijos de URL, clave de OpenAI,
-  idiomas, código de acceso, usuarios.
+  idiomas, usuarios y roles, seguridad.
 
 ### URLs de los tablets
 Compatibles con las actuales: `/bbm-t1/` (producto por defecto), `/bbm-t1a/`, `/bbm-t1b/`… (a = primer producto).

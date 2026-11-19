@@ -25,10 +25,43 @@ function db(): PDO
 
 function db_migrate(PDO $pdo): void
 {
-    $ver = (int)$pdo->query('PRAGMA user_version')->fetchColumn();
-    if ($ver >= 1) {
+    if ((int)$pdo->query('PRAGMA user_version')->fetchColumn() >= 2) {
         return;
     }
+    // Bloqueo de escritura: evita que dos peticiones simultáneas migren a la vez.
+    $pdo->exec('BEGIN IMMEDIATE');
+    try {
+        db_migrate_steps($pdo);
+        $pdo->exec('COMMIT');
+    } catch (Throwable $e) {
+        $pdo->exec('ROLLBACK');
+        throw $e;
+    }
+}
+
+function db_migrate_steps(PDO $pdo): void
+{
+    $ver = (int)$pdo->query('PRAGMA user_version')->fetchColumn();
+    if ($ver < 1) {
+        db_migrate_v1($pdo);
+    }
+    if ($ver < 2) {
+        // v2: roles, versión de sesión (invalidar sesiones al cambiar contraseña), uso de subidas.
+        $pdo->exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'");
+        $pdo->exec('ALTER TABLE users ADD COLUMN session_ver INTEGER NOT NULL DEFAULT 1');
+        $pdo->exec('CREATE TABLE IF NOT EXISTS upload_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            bytes INTEGER NOT NULL,
+            ts INTEGER NOT NULL
+        )');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS upload_usage_user ON upload_usage(user_id, ts)');
+        $pdo->exec('PRAGMA user_version = 2');
+    }
+}
+
+function db_migrate_v1(PDO $pdo): void
+{
     $pdo->exec(<<<'SQL'
 CREATE TABLE IF NOT EXISTS settings (
     k TEXT PRIMARY KEY,

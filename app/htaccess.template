@@ -18,6 +18,9 @@ RewriteEngine On
 # La carpeta .well-known (Let's Encrypt) siempre accesible y sin más reglas
 RewriteRule ^\.well-known/ - [END]
 
+# /cookie.html autoriza el dispositivo automáticamente (lo atiende cookie.php)
+RewriteRule ^cookie\.html$ cookie.php [END]
+
 # Bloquear ficheros internos / ocultos
 RewriteRule ^(_app|app|data)(/|$) - [F,L]
 RewriteRule (^|/)\. - [F,L]

@@ -8,7 +8,12 @@ todavía una prueba de penetración contra el servidor real (ver "Pendiente" al 
 | Área | Medida |
 |---|---|
 | Acceso a la web | Sin la cookie `expo_device`, todas las peticiones (incluidos medios estáticos) se redirigen a bezares.com desde el `.htaccess`, y además desde PHP. Excepciones: `/.well-known/` (SSL), `/cookie.html` y `/cookie.php`. |
-| Cookie de dispositivo | Token aleatorio de 192 bits, `HttpOnly`, `Secure`, `SameSite=Lax`. Se obtiene con un código de acceso (hash bcrypt, mín. 6 caracteres, 10 intentos / 15 min por IP). Se puede revocar para todos los dispositivos. |
+| Cookie de dispositivo | Token aleatorio de 192 bits, `HttpOnly`, `Secure`, `SameSite=Lax`. Se obtiene **automáticamente** al abrir `/cookie.html` (decisión del cliente: sin código, para no requerir intervención en los tablets). Se puede revocar para todos los dispositivos. |
+| Caché sin conexión | Si la puerta redirige (cookie revocada), el service worker borra todo lo guardado. Sin conexión, lo guardado sólo se muestra 7 días desde la última autorización confirmada por el servidor. |
+| Roles | Administrador (todo) y Editor de contenido (tablets, productos, galería). Configuración, seguridad y usuarios sólo para administradores, comprobado en el servidor. |
+| Sesiones tras cambios | Versión de sesión por usuario: cambiar o recuperar la contraseña, o cambiar el rol, cierra todas las sesiones PHP y "mantener sesión" del usuario. |
+| Cuotas de subida | Máx. por fichero, cuota total de galería, cuota diaria por usuario, cuota de temporales, 3 subidas simultáneas, espacio libre mínimo en disco, tamaño declarado verificado y bloqueo exclusivo por subida. |
+| nginx | Las directivas nginx propuestas no contienen secretos: sólo bloquean rutas internas. La puerta la aplica Apache con el `.htaccess` regenerado automáticamente; la rotación del token lanza la verificación de seguridad. |
 | Instalador | Exige una clave de un solo uso guardada en la carpeta de datos (sólo accesible por FTP / Administrador de archivos) y se desactiva al terminar. |
 | Contraseñas | `password_hash` (bcrypt), mín. 10 caracteres, rehash automático. Bloqueo: 5 fallos por usuario / 10 por IP en 15 min. Mensajes genéricos (no revelan si el usuario existe) y hash ficticio para igualar tiempos. |
 | Sesión | Cookie `HttpOnly` + `Secure` + `SameSite=Strict`, `use_strict_mode`, ID regenerado al entrar, caducidad por inactividad (2 h), sesiones guardadas fuera de `/tmp` compartido. |
@@ -35,14 +40,26 @@ todavía una prueba de penetración contra el servidor real (ver "Pendiente" al 
 4. **Instalador accesible para cualquiera** hasta completarse (riesgo de que un tercero cree el administrador). → Clave de instalación de un solo uso + límite de intentos.
 5. **Código y datos dentro de `httpdocs` expuestos si nginx sirve estáticos.** → `app/.htaccess` propio, directivas nginx con `if … return 403` (se aplican antes que las `location` de PHP de Plesk), guardas en los PHP internos, datos en `private/` cuando existe y verificación automática desde el panel.
 6. **Errores de PDO podían devolverse al navegador** (PDOException es RuntimeException). → Se capturan aparte y se devuelve un mensaje genérico.
-7. **Código de acceso de dispositivos de 4 caracteres** demasiado corto. → Mínimo 6.
+7. ~~Código de acceso de dispositivos corto~~ → sustituido por autorización automática (ver abajo).
+
+### Segunda auditoría (informe externo)
+
+| # | Hallazgo | Estado |
+|---|---|---|
+| 01 ALTO | `cookie.php` autorizaba si faltaba el hash del código | Corregido primero (denegar por defecto). Después, a petición del cliente, `/cookie.html` autoriza **sin código**: el riesgo pasa a ser intencionado (ver residuales). |
+| 02 MEDIO | Contenido sin conexión tras revocar | Borrado de caché al detectar la redirección de la puerta + caducidad de 7 días sin conexión. |
+| 03 MEDIO | Agotamiento de almacenamiento por subidas | Cuotas global, diaria por usuario y de temporales; límite de simultáneas; comprobación de disco; tamaño declarado; `flock` por subida. |
+| 04 MEDIO | Token sincronizado a mano entre Apache y nginx | El token ya no está en nginx; verificación automática tras cada rotación. |
+| 05 BAJO | Sesiones activas tras cambio de contraseña | Versión de sesión por usuario. |
+| 06 BAJO | Sin roles | Administrador / Editor de contenido. |
 
 ## Riesgos residuales / recomendaciones
 
-- **nginx en Plesk**: si "Servir ficheros estáticos directamente mediante nginx" está activo, el `.htaccess` no protege `/media`. Desactívalo y/o pega las directivas nginx del panel. **Comprobar tras desplegar** (ver abajo).
-- La cookie de dispositivo es la misma para todos los tablets: si se pierde uno, revoca todos.
+- **Autorización sin código (decisión del cliente)**: cualquiera que conozca `https://expo.bezares.com/cookie.html` obtiene acceso de dispositivo. No la publiques ni la compartas fuera del equipo; si se difunde, *Revocar todos los dispositivos*.
+- **nginx en Plesk**: si "Servir ficheros estáticos directamente mediante nginx" está activo, el `.htaccess` no protege `/media`. Desactívalo. La verificación de seguridad lo detecta.
+- La cookie de dispositivo es la misma para todos los tablets: si se pierde uno, revoca todos. Un tablet desconectado conserva su contenido guardado hasta 7 días.
 - El bloqueo por intentos fallidos permite a alguien con acceso de dispositivo bloquear temporalmente (15 min) un usuario conociendo su nombre.
-- Usa un código de acceso largo (8+ caracteres) y contraseñas únicas.
+- Usa contraseñas largas y únicas; da a cada persona el rol mínimo necesario.
 - Mantén PHP actualizado desde Plesk.
 
 ## Pendiente: verificación en el servidor real
@@ -54,7 +71,7 @@ Tras desplegar, comprobar desde un navegador **sin** cookie (ventana privada):
 - `https://expo.bezares.com/` → redirige a bezares.com
 - `https://expo.bezares.com/media/photos/<una-foto>.jpg` → redirige a bezares.com (si se ve la foto, nginx está sirviendo estáticos: ver arriba)
 - `https://expo.bezares.com/.well-known/acme-challenge/x` → 404 del servidor (no redirige)
-- `https://expo.bezares.com/cookie.html` → se muestra
+- `https://expo.bezares.com/cookie.html` → autoriza y lleva a la portada (en una ventana privada distinta de la anterior)
 - `https://expo.bezares.com/install.php` → 404
 - `https://expo.bezares.com/.htaccess` y `/_boot.php` → 403/redirección
 - Comprobar las cabeceras en https://securityheaders.com (con un dispositivo autorizado no es posible desde fuera: aceptable que muestre la redirección).

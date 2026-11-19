@@ -4,13 +4,39 @@
  * - Páginas: network-first con timeout; si no hay red, se sirve la copia guardada.
  * - Vídeos: peticiones Range servidas desde la caché cuando el fichero ya está guardado.
  * - Precarga de todas las páginas y medios del tablet al recibir el mensaje "prefetch".
+ * - Revocación: si la puerta redirige (cookie revocada) se borra toda la caché; sin conexión,
+ *   lo guardado sólo se muestra hasta MAX_OFFLINE_MS desde la última autorización confirmada.
  */
-const SW_VERSION = '1';
+const SW_VERSION = '2';
 const C_ASSETS = 'expo-assets-v' + SW_VERSION;
 const C_PAGES = 'expo-pages-v' + SW_VERSION;
 const KEEP = [C_ASSETS, C_PAGES];
 const PAGE_TIMEOUT = 4000;
+// Sin conexión, el contenido guardado sólo se muestra durante este tiempo desde la última
+// vez que el servidor confirmó que el dispositivo sigue autorizado.
+const MAX_OFFLINE_MS = 7 * 24 * 3600 * 1000;
+const AUTH_KEY = '/__expo_auth_ok';
 const inFlight = new Set();
+
+async function purgeAll() {
+  for (const k of await caches.keys()) await caches.delete(k);
+}
+
+async function markAuthorized() {
+  const c = await caches.open(C_PAGES);
+  await c.put(AUTH_KEY, new Response(String(Date.now())));
+}
+
+async function authFresh() {
+  const c = await caches.open(C_PAGES);
+  const r = await c.match(AUTH_KEY);
+  if (!r) return false;
+  const t = parseInt(await r.text(), 10);
+  return Number.isFinite(t) && Date.now() - t < MAX_OFFLINE_MS;
+}
+
+/** Respuesta que indica que el dispositivo ya no está autorizado (redirección de la puerta). */
+const isRevoked = (res) => res && (res.type === 'opaqueredirect' || (res.redirected && new URL(res.url).origin !== self.location.origin));
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -53,7 +79,11 @@ async function putAsset(cache, url, res) {
 async function cacheFirst(req) {
   const cache = await caches.open(C_ASSETS);
   const hit = await cache.match(req.url);
-  if (hit) return hit;
+  if (hit) {
+    if (await authFresh()) return hit;
+    // Autorización caducada: no servir lo guardado; ir a la red (la puerta decidirá).
+    await purgeAll();
+  }
   const res = await fetch(req);
   if (cacheable(res)) putAsset(cache, req.url, res.clone()).catch(() => {});
   return res;
@@ -61,7 +91,8 @@ async function cacheFirst(req) {
 
 async function rangeResponse(req, event) {
   const cache = await caches.open(C_ASSETS);
-  const hit = await cache.match(req.url);
+  let hit = await cache.match(req.url);
+  if (hit && !(await authFresh())) { await purgeAll(); hit = null; }
   if (!hit) {
     // Primera reproducción: se sirve desde red y se guarda el fichero completo en segundo plano.
     event.waitUntil(cacheInBackground(req.url));
@@ -105,10 +136,19 @@ async function networkFirst(req) {
       fetch(req),
       new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), PAGE_TIMEOUT)),
     ]);
-    if (cacheable(res)) cache.put(req.url, res.clone()).catch(() => {});
+    if (isRevoked(res)) {
+      // La puerta ha redirigido: cookie revocada o caducada → borrar todo lo guardado.
+      await purgeAll();
+      return res;
+    }
+    if (cacheable(res)) {
+      // Se espera a la marca antes de responder: los recursos de la página la consultan.
+      await markAuthorized().catch(() => {});
+      cache.put(req.url, res.clone()).catch(() => {});
+    }
     return res;
   } catch (err) {
-    const hit = await cache.match(req.url);
+    const hit = (await authFresh()) ? await cache.match(req.url) : null;
     if (hit) return hit;
     return new Response('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Sin conexión</title>'
       + '<body style="font-family:system-ui;text-align:center;padding:4rem 1rem"><h1>Sin conexión</h1><p>Esta página aún no está guardada en el dispositivo.</p>'
@@ -131,7 +171,8 @@ async function prefetch(urls) {
           if (await assets.match(abs)) continue;
           await cacheInBackground(abs);
         } else {
-          const res = await fetch(abs, { credentials: 'same-origin' });
+          const res = await fetch(abs, { credentials: 'same-origin', redirect: 'manual' });
+          if (isRevoked(res)) { await purgeAll(); return; }
           if (cacheable(res)) await pages.put(abs, res);
         }
       } catch (_) { /* ignorar */ }

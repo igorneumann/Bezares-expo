@@ -58,19 +58,20 @@ function gate_htaccess_block(bool $allowInstaller = false): string
         . "# END EXPO-GATE";
 }
 
-/** Snippet equivalente para "Directivas nginx adicionales" de Plesk. */
+/**
+ * Directivas para "Directivas nginx adicionales" de Plesk.
+ * NO contienen el token: la puerta de cookie la aplica sólo Apache (.htaccess generado
+ * automáticamente), así no hay secretos que sincronizar a mano entre Apache y nginx.
+ * nginx sólo bloquea rutas internas, que no cambian nunca.
+ * Requisito: "Servir ficheros estáticos directamente mediante nginx" desactivado
+ * (lo comprueba la verificación de seguridad).
+ */
 function gate_nginx_snippet(): string
 {
-    $token = preg_replace('/[^a-f0-9]/', '', (string)setting('device_token'));
-    // Se usa "if" a nivel de servidor (fase rewrite) para que se aplique antes que
-    // las "location" de PHP que Plesk define por su cuenta.
+    // "if" a nivel de servidor (fase rewrite): se aplica antes que las "location" de PHP de Plesk.
     return "if (\$uri ~ \"^/(app|data)/\") { return 403; }\n"
         . "if (\$uri ~ \"/\\.(?!well-known/)\") { return 403; }\n"
-        . "if (\$uri ~* \"\\.(md|sqlite|sqlite3|log|key|template|lock)$\") { return 403; }\n"
-        . "set \$expo_gate 1;\n"
-        . "if (\$uri ~ \"^/(\\.well-known/|cookie\\.html|cookie\\.php)\") { set \$expo_gate 0; }\n"
-        . "if (\$http_cookie ~ \"" . GATE_COOKIE . "=" . $token . "\") { set \$expo_gate 0; }\n"
-        . "if (\$expo_gate) { return 302 " . CFG['redirect_url'] . "; }";
+        . "if (\$uri ~* \"\\.(md|sqlite|sqlite3|log|key|template|lock|part|tmp)$\") { return 403; }";
 }
 
 /*

@@ -37,8 +37,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         $pdo->beginTransaction();
         $pdo->prepare('UPDATE users SET pass_hash = ? WHERE id = ?')->execute([password_hash($p1, PASSWORD_DEFAULT), $row['user_id']]);
         $pdo->prepare('UPDATE reset_tokens SET used = 1 WHERE id = ?')->execute([$row['id']]);
-        $pdo->prepare('DELETE FROM remember_tokens WHERE user_id = ?')->execute([$row['user_id']]);
         $pdo->commit();
+        invalidate_user_sessions((int)$row['user_id']); // cierra todas las sesiones abiertas
         log_event('contraseña restablecida user_id=' . $row['user_id']);
         header('Location: /admin/?reset=1', true, 303);
         exit;

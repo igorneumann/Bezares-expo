@@ -18,7 +18,13 @@ $__cfg = [
     'redirect_url'  => 'https://bezares.com/',     // destino para visitantes sin cookie
     'public_url'    => 'https://expo.bezares.com', // URL canónica (enlaces de los emails; evita "Host header injection")
     'media_dir'     => 'media',                    // carpeta (relativa al webroot) para medios / FTP
-    'max_upload_mb' => 2048,
+    // Límites de subida (protección frente a agotamiento del almacenamiento)
+    'max_upload_mb'        => 2048,   // por fichero
+    'media_quota_mb'       => 30720,  // total de la galería
+    'user_daily_upload_mb' => 10240,  // por usuario y 24 h
+    'tmp_quota_mb'         => 4096,   // subidas a medias en curso
+    'max_parallel_uploads' => 3,      // simultáneas por usuario
+    'min_free_disk_mb'     => 2048,   // espacio libre mínimo que se respeta en disco
     'debug'         => false,
 ];
 if (is_file(APP_DIR . '/config.php')) {

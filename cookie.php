@@ -1,39 +1,29 @@
 <?php
 declare(strict_types=1);
 
+/*
+ * Autorización de dispositivos. Se accede como https://expo.bezares.com/cookie.html
+ * (el .htaccess la reescribe aquí): añade la cookie de autorización y redirige a la
+ * página principal sin intervención del usuario.
+ */
 require __DIR__ . '/_boot.php';
 
-send_security_headers("default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+send_security_headers("default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
 header('Cache-Control: no-store');
+header('X-Robots-Tag: noindex, nofollow');
 
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST' || setting('installed') !== '1') {
-    header('Location: /cookie.html', true, 303);
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+if (!in_array($method, ['GET', 'POST'], true)) {
+    http_response_code(405);
     exit;
 }
 
-$bucket = 'cookie-ip:' . client_ip();
-$fail = static function (string $msg): never {
-    http_response_code(403);
-    header('Content-Type: text/html; charset=utf-8');
-    echo '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-        . '<title>Acceso</title><body style="font-family:system-ui;text-align:center;padding:3rem 1rem">'
-        . '<p>' . e($msg) . '</p><p><a href="/cookie.html">Volver</a></p></body>';
+// Antes de instalar no hay token válido que entregar.
+if (setting('installed') !== '1') {
+    header('Location: ' . CFG['redirect_url'], true, 302);
     exit;
-};
-
-if (throttle_exceeded($bucket, 10, 900)) {
-    $fail('Demasiados intentos. Espera 15 minutos.');
 }
 
-$code = (string)($_POST['code'] ?? '');
-$hash = (string)setting('access_code_hash', '');
-if ($hash !== '' && !password_verify($code, $hash)) {
-    throttle_hit($bucket);
-    log_event('cookie: código incorrecto');
-    $fail('Código de acceso incorrecto.');
-}
-
-throttle_clear($bucket);
 gate_set_cookie();
-log_event('cookie: dispositivo autorizado');
-header('Location: /', true, 303);
+log_event('cookie: dispositivo autorizado (' . substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120) . ')');
+header('Location: /', true, 302);

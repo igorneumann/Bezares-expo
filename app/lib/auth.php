@@ -63,22 +63,49 @@ function current_user(): ?array
 {
     session_boot();
     if (!empty($_SESSION['uid'])) {
-        $st = db()->prepare('SELECT id, username, email FROM users WHERE id = ?');
+        $st = db()->prepare('SELECT id, username, email, role, session_ver FROM users WHERE id = ?');
         $st->execute([(int)$_SESSION['uid']]);
         $u = $st->fetch();
-        if ($u) {
+        // La sesión sólo es válida si su versión coincide con la del usuario
+        // (se incrementa al cambiar/recuperar la contraseña o el rol).
+        if ($u && (int)($_SESSION['sv'] ?? 0) === (int)$u['session_ver']) {
             return $u;
         }
-        unset($_SESSION['uid']);
+        $_SESSION = [];
+        session_regenerate_id(true);
     }
     return remember_login();
+}
+
+function is_admin(array $u): bool
+{
+    return ($u['role'] ?? '') === 'admin';
+}
+
+/** Invalida todas las sesiones y "mantener sesión" de un usuario. */
+function invalidate_user_sessions(int $uid): void
+{
+    db()->prepare('UPDATE users SET session_ver = session_ver + 1 WHERE id = ?')->execute([$uid]);
+    db()->prepare('DELETE FROM remember_tokens WHERE user_id = ?')->execute([$uid]);
+}
+
+/** Tras invalidar, mantiene viva la sesión actual (p. ej. el propio usuario cambia su contraseña). */
+function refresh_session_version(int $uid): void
+{
+    $st = db()->prepare('SELECT session_ver FROM users WHERE id = ?');
+    $st->execute([$uid]);
+    $_SESSION['sv'] = (int)$st->fetchColumn();
+    session_regenerate_id(true);
 }
 
 function login_user(int $uid, bool $remember): void
 {
     session_boot();
     session_regenerate_id(true);
+    $st = db()->prepare('SELECT session_ver FROM users WHERE id = ?');
+    $st->execute([$uid]);
     $_SESSION['uid'] = $uid;
+    $_SESSION['sv'] = (int)$st->fetchColumn();
     $_SESSION['last'] = time();
     $_SESSION['csrf'] = random_token(32);
     db()->prepare('UPDATE users SET last_login = ? WHERE id = ?')->execute([time(), $uid]);
@@ -131,7 +158,7 @@ function remember_login(): ?array
     // Rotación del token en cada uso.
     $pdo->prepare('DELETE FROM remember_tokens WHERE id = ?')->execute([$row['id']]);
     login_user((int)$row['user_id'], true);
-    $st = $pdo->prepare('SELECT id, username, email FROM users WHERE id = ?');
+    $st = $pdo->prepare('SELECT id, username, email, role, session_ver FROM users WHERE id = ?');
     $st->execute([(int)$row['user_id']]);
     return $st->fetch() ?: null;
 }

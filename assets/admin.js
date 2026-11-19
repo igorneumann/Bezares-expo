@@ -225,7 +225,7 @@ async function uploadFile(file, kind, { convertOf = 0, onProgress } = {}) {
   const n = Math.max(1, Math.ceil(file.size / CHUNK));
   const id = crypto.getRandomValues(new Uint8Array(16)).reduce((s, b) => s + b.toString(16).padStart(2, '0'), '');
   for (let i = 0; i < n; i++) {
-    const qs = new URLSearchParams({ id, i: String(i), n: String(n), name: file.name, kind });
+    const qs = new URLSearchParams({ id, i: String(i), n: String(n), size: String(file.size), name: file.name, kind });
     if (convertOf) qs.set('convert_of', String(convertOf));
     let res = null;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -703,10 +703,27 @@ function openModelEditor(m) {
 // ---------------------------------------------------------------------------
 // Pestaña CONFIGURACIÓN
 // ---------------------------------------------------------------------------
+function passwordCard() {
+  const pw = { current: '', new: '' };
+  return h('div', { class: 'card' },
+    h('h3', null, 'Mi contraseña'),
+    h('label', { class: 'field' }, h('span', null, 'Contraseña actual'), h('input', { type: 'password', autocomplete: 'current-password', oninput: (e) => { pw.current = e.target.value; } })),
+    h('label', { class: 'field' }, h('span', null, 'Nueva contraseña (mín. 10)'), h('input', { type: 'password', autocomplete: 'new-password', minlength: 10, oninput: (e) => { pw.new = e.target.value; } })),
+    h('p', { class: 'hint' }, 'Al cambiarla se cierran tus sesiones abiertas en otros dispositivos.'),
+    h('button', { class: 'btn btn-sm btn-primary', onclick: (e) => busy(e.currentTarget, async () => { await api('user.password', pw); toast('Contraseña cambiada'); }) }, 'Cambiar contraseña'));
+}
+
+const ROLE_LABEL = { admin: 'Administrador', editor: 'Editor de contenido' };
+
 function renderSettings() {
+  if (state.role !== 'admin') {
+    return h('section', { class: 'panel settings' },
+      h('div', { class: 'panel-head' }, h('h2', null, 'Mi cuenta')),
+      h('p', { class: 'hint' }, 'Tu usuario es editor de contenido: puedes gestionar tablets, productos y galería. La configuración y los usuarios los gestiona un administrador.'),
+      h('div', { class: 'settings-grid' }, passwordCard()));
+  }
   const s = clone(state.settings);
   s.openai_key = '';
-  s.access_code = '';
   const inp = (key, label, attrs = {}, hint) => h('label', { class: 'field' },
     h('span', null, label, hint ? h('small', null, ' ' + hint) : null),
     h('input', { value: s[key] ?? '', ...attrs, oninput: (e) => { s[key] = e.target.value; } }));
@@ -728,8 +745,7 @@ function renderSettings() {
   renderLangs();
 
   // Usuarios
-  const pw = { current: '', new: '' };
-  const nu = { username: '', email: '', password: '' };
+  const nu = { username: '', email: '', password: '', role: 'editor' };
 
   return h('section', { class: 'panel settings' },
     h('div', { class: 'panel-head' }, h('h2', null, 'Configuración'), h('span', { class: 'grow' }), saveBtn),
@@ -766,9 +782,9 @@ function renderSettings() {
 
       h('div', { class: 'card' },
         h('h3', null, 'Acceso de dispositivos (cookie)'),
-        h('p', { class: 'hint' }, 'Sin la cookie, cualquier visita se redirige a ', h('code', null, s.redirect_url), '. Para autorizar un tablet abre ',
-          h('a', { href: '/cookie.html', target: '_blank', rel: 'noopener' }, '/cookie.html'), ' en él e introduce el código.'),
-        inp('access_code', 'Nuevo código de acceso', { type: 'password', autocomplete: 'new-password', placeholder: s.access_code_set ? '•••• (configurado; escribe para cambiarlo)' : 'Mín. 6 caracteres' }),
+        h('p', { class: 'hint' }, 'Sin la cookie, cualquier visita se redirige a ', h('code', null, s.redirect_url), '. Para autorizar un tablet basta con abrir ',
+          h('code', null, '/cookie.html'), ' en él: añade la cookie y lleva a la página principal automáticamente.'),
+        h('p', { class: 'hint' }, 'Cualquiera que conozca esa dirección puede autorizarse: no la publiques. Si se difunde, usa "Revocar todos los dispositivos".'),
         h('p', null, 'Estado del .htaccess: ', s.htaccess_ok ? h('span', { class: 'badge badge-ok' }, 'Correcto') : h('span', { class: 'badge badge-err' }, 'No actualizado'),
           ' ', h('button', { class: 'btn btn-sm', onclick: (e) => busy(e.currentTarget, async () => {
             const r = await api('gate.write');
@@ -777,12 +793,22 @@ function renderSettings() {
             render();
           }) }, 'Regenerar .htaccess')),
         h('button', { class: 'btn btn-danger btn-sm', onclick: async (e) => {
-          if (!(await confirmBox('Se invalidarán las cookies de TODOS los tablets: habrá que volver a autorizarlos en /cookie.html. Este dispositivo se reautoriza automáticamente. ¿Continuar?', 'Regenerar', true))) return;
+          if (!(await confirmBox('Se invalidarán las cookies de TODOS los tablets: habrá que volver a autorizarlos en /cookie.html (los tablets conectados borrarán además su contenido guardado). Este dispositivo se reautoriza automáticamente. ¿Continuar?', 'Revocar', true))) return;
+          toast('Revocando y verificando la puerta…', 'info', 0);
           const r = await busy(e.currentTarget, () => api('gate.rotate'));
-          if (r) { state.settings = r.settings; toast(r.written ? 'Token regenerado' : 'Token regenerado, pero NO se pudo escribir el .htaccess', r.written ? 'ok' : 'error', 8000); render(); }
+          if (r) {
+            state.settings = r.settings;
+            lastSecurityReport = r.report;
+            state.settings.security_last = { at: Math.floor(Date.now() / 1000), summary: r.report.summary };
+            const bad = !r.written || r.report.summary === 'fail';
+            toast(!r.written ? 'Token regenerado, pero NO se pudo escribir el .htaccess' : (bad ? 'Token regenerado, pero la verificación ha encontrado fallos: revisa el informe' : 'Dispositivos revocados y puerta verificada'), bad ? 'error' : 'ok', 9000);
+            render();
+            window.scrollTo(0, 0);
+          }
         } }, 'Revocar todos los dispositivos'),
-        h('details', null, h('summary', null, 'Directivas nginx para Plesk (opcional, recomendado)'),
-          h('p', { class: 'hint' }, 'Si nginx sirve los ficheros estáticos directamente, pega esto en Plesk > Configuración de Apache y nginx > Directivas nginx adicionales. Hay que actualizarlo si revocas los dispositivos.'),
+        h('details', null, h('summary', null, 'Directivas nginx para Plesk (recomendado)'),
+          h('p', { class: 'hint' }, 'Pega esto en Plesk > Configuración de Apache y nginx > Directivas nginx adicionales. No contiene el token, así que no hay que tocarlo al revocar dispositivos. '
+            + 'La puerta de cookie la aplica Apache: "Servir ficheros estáticos directamente mediante nginx" debe estar desactivado (la verificación lo comprueba).'),
           h('pre', null, s.nginx_snippet))),
 
       h('div', { class: 'card' },
@@ -792,22 +818,29 @@ function renderSettings() {
         h('p', { class: 'hint' }, 'Las páginas se revalidan automáticamente tras cada cambio. Usa esto sólo si un tablet no muestra un cambio.'),
         h('button', { class: 'btn btn-sm', onclick: (e) => busy(e.currentTarget, async () => { await api('cache.purge'); toast('Los tablets descargarán de nuevo las páginas'); }) }, 'Forzar actualización de páginas')),
 
+      passwordCard(),
       h('div', { class: 'card' },
-        h('h3', null, 'Mi contraseña'),
-        h('label', { class: 'field' }, h('span', null, 'Contraseña actual'), h('input', { type: 'password', autocomplete: 'current-password', oninput: (e) => { pw.current = e.target.value; } })),
-        h('label', { class: 'field' }, h('span', null, 'Nueva contraseña (mín. 10)'), h('input', { type: 'password', autocomplete: 'new-password', minlength: 10, oninput: (e) => { pw.new = e.target.value; } })),
-        h('button', { class: 'btn btn-sm btn-primary', onclick: (e) => busy(e.currentTarget, async () => { await api('user.password', pw); toast('Contraseña cambiada'); }) }, 'Cambiar contraseña'),
-        h('h3', null, 'Usuarios administradores'),
+        h('h3', null, 'Usuarios'),
+        h('p', { class: 'hint' }, 'Administrador: todo. Editor de contenido: tablets, productos y galería (sin configuración, seguridad ni usuarios).'),
         h('ul', { class: 'user-list' }, state.users.map((u) => h('li', null,
           h('span', { class: 'grow' }, h('strong', null, u.username), ' ', h('small', null, u.email)),
-          u.id === state.me ? h('span', { class: 'badge' }, 'tú') : h('button', { class: 'btn btn-ghost btn-sm btn-danger', onclick: async () => {
-            if (!(await confirmBox(`¿Eliminar el usuario ${u.username}?`, 'Eliminar', true))) return;
-            const r = await busy(null, () => api('user.delete', { id: u.id }));
-            if (r) { state.users = r.users; render(); }
-          } }, '✕')))),
+          u.id === state.me
+            ? [h('span', { class: 'badge' }, ROLE_LABEL[u.role] || u.role), h('span', { class: 'badge' }, 'tú')]
+            : [h('select', { class: 'role-select', 'aria-label': 'Rol de ' + u.username, onchange: async (e) => {
+                const r = await busy(null, () => api('user.role', { id: u.id, role: e.target.value }));
+                if (r) { state.users = r.users; toast('Rol actualizado; sus sesiones se han cerrado'); }
+                render();
+              } }, Object.entries(ROLE_LABEL).map(([v, l]) => h('option', { value: v, selected: u.role === v }, l))),
+              h('button', { class: 'btn btn-ghost btn-sm btn-danger', title: 'Eliminar', onclick: async () => {
+                if (!(await confirmBox(`¿Eliminar el usuario ${u.username}?`, 'Eliminar', true))) return;
+                const r = await busy(null, () => api('user.delete', { id: u.id }));
+                if (r) { state.users = r.users; render(); }
+              } }, '✕')]))),
         h('details', null, h('summary', null, 'Añadir usuario'),
           h('label', { class: 'field' }, h('span', null, 'Usuario'), h('input', { autocomplete: 'off', oninput: (e) => { nu.username = e.target.value; } })),
           h('label', { class: 'field' }, h('span', null, 'Email'), h('input', { type: 'email', autocomplete: 'off', oninput: (e) => { nu.email = e.target.value; } })),
+          h('label', { class: 'field' }, h('span', null, 'Rol'), h('select', { onchange: (e) => { nu.role = e.target.value; } },
+            h('option', { value: 'editor', selected: true }, ROLE_LABEL.editor), h('option', { value: 'admin' }, ROLE_LABEL.admin))),
           h('label', { class: 'field' }, h('span', null, 'Contraseña (mín. 10)'), h('input', { type: 'password', autocomplete: 'new-password', oninput: (e) => { nu.password = e.target.value; } })),
           h('button', { class: 'btn btn-sm btn-primary', onclick: (e) => busy(e.currentTarget, async () => { const r = await api('user.add', nu); state.users = r.users; toast('Usuario creado'); render(); }) }, 'Crear usuario')))));
 }
@@ -893,7 +926,7 @@ window.addEventListener('beforeunload', (e) => {
 (async function init() {
   try {
     const r = await api('bootstrap');
-    Object.assign(state, { settings: r.settings, languages: r.languages, tablets: r.tablets, products: r.products, media: r.media, users: r.users, me: r.me });
+    Object.assign(state, { settings: r.settings, languages: r.languages, tablets: r.tablets, products: r.products, media: r.media, users: r.users, me: r.me, role: r.role });
     render();
   } catch (e) {
     app.replaceChildren(h('p', { class: 'flash flash-error' }, 'No se pudo cargar el panel: ' + e.message));
