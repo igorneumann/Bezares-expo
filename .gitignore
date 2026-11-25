@@ -1,0 +1,21 @@
+# Generado por la aplicación (contiene el token de la puerta): NUNCA versionar
+/.htaccess
+/.htaccess.*.tmp
+
+# Configuración local y datos de ejecución
+/app/config.php
+/app/data/
+/app/security-probe.txt
+
+# Medios subidos por el panel o por FTP (se conservan las reglas y la estructura)
+/media/**
+!/media/.htaccess
+!/media/videos/
+!/media/models/
+!/media/photos/
+!/media/_cache/
+!/media/*/.gitkeep
+
+# Sistema
+.DS_Store
+Thumbs.db

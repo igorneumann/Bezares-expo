@@ -1,0 +1,16 @@
+# Carpeta de medios (también subida por FTP): nunca ejecutar código.
+Options -Indexes -ExecCGI
+<IfModule mod_mime.c>
+    RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phar .pht .pl .py .cgi .shtml
+    RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .phar .pht
+</IfModule>
+<FilesMatch "(?i)\.(php\d?|phtml|phar|pht|cgi|pl|py|sh|shtml|html?|xhtml|js|mjs|htaccess|htpasswd|ini|exe|bat)$">
+    Require all denied
+</FilesMatch>
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set Content-Security-Policy "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; media-src 'self'; sandbox"
+    <FilesMatch "(?i)\.(stp|step|stl|obj|mtl|gltf|bin)$">
+        Header set Content-Disposition "attachment"
+    </FilesMatch>
+</IfModule>
