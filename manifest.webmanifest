@@ -8,7 +8,7 @@
   "background_color": "#ffffff",
   "theme_color": "#00567D",
   "icons": [
-    { "src": "/assets/logo-expo-light.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/assets/logo-expo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
     { "src": "/assets/icon-250.png", "sizes": "250x250", "type": "image/png", "purpose": "any" }
   ]
 }
