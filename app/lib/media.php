@@ -172,6 +172,56 @@ function svg_is_safe(string $svg): bool
     if (preg_match('/(?:xlink:)?href\s*=\s*["\']\s*(?:https?:|\/\/)/i', $svg)) {
         return false;
     }
+    // Elementos activos con prefijo de espacio de nombres (<x:script xmlns:x="…svg">).
+    if (preg_match('/<\s*[\w.-]+:(script|foreignobject|iframe|embed|object|handler|listener)\b/i', $svg)) {
+        return false;
+    }
+    return svg_dom_is_safe($svg);
+}
+
+/**
+ * Segunda comprobación con el SVG ya interpretado como XML: el nombre real de cada elemento y
+ * atributo, sin importar prefijos ni entidades (p. ej. "javascript&#58;"). Si no se puede
+ * interpretar, se rechaza. Sin la extensión DOM, queda la comprobación de texto anterior.
+ */
+function svg_dom_is_safe(string $svg): bool
+{
+    if (!class_exists('DOMDocument')) {
+        return true;
+    }
+    $prev = libxml_use_internal_errors(true);
+    $doc = new DOMDocument();
+    $ok = $doc->loadXML($svg, LIBXML_NONET | LIBXML_COMPACT);
+    libxml_clear_errors();
+    libxml_use_internal_errors($prev);
+    if (!$ok || !$doc->documentElement || strtolower($doc->documentElement->localName) !== 'svg') {
+        return false;
+    }
+    $bad = ['script', 'foreignobject', 'iframe', 'embed', 'object', 'handler', 'listener'];
+    foreach ($doc->getElementsByTagName('*') as $el) {
+        $local = strtolower((string)$el->localName);
+        foreach ($el->attributes ?? [] as $attr) {
+            $name = strtolower((string)$attr->localName);
+            $val = strtolower(preg_replace('/[\s\x00-\x1f]+/', '', (string)$attr->value) ?? '');
+            if (str_starts_with($name, 'on')) {
+                return false;
+            }
+            if (($name === 'href' || $name === 'src') && $val !== ''
+                && !str_starts_with($val, '#') && !preg_match('~^data:image/(png|jpe?g|gif|webp);~', $val)) {
+                return false;
+            }
+            if (str_contains($val, 'javascript:')) {
+                return false;
+            }
+        }
+        if (in_array($local, $bad, true)) {
+            return false;
+        }
+        // <animate>/<set> podrían cambiar un href al reproducirse.
+        if (in_array($local, ['animate', 'set'], true) && str_contains(strtolower($el->getAttribute('attributeName')), 'href')) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -540,8 +590,19 @@ function media_companion_abs(string $baseDirAbs, string $ref): ?string
     }
     $abs = realpath($baseDirAbs . '/' . $ref);
     $root = realpath(media_root());
-    return ($abs && $root && str_starts_with($abs, $root . DIRECTORY_SEPARATOR) && is_file($abs)) ? $abs : null;
+    if (!$abs || !$root || !str_starts_with($abs, $root . DIRECTORY_SEPARATOR) || !is_file($abs)) {
+        return null;
+    }
+    // Sólo ficheros asociados de verdad (buffers, materiales, texturas): nunca ficheros ocultos
+    // como media/.htaccess, que se borrarían al terminar de empaquetar.
+    $name = basename($abs);
+    if ($name[0] === '.' || !in_array(media_ext($name), MEDIA_COMPANION_EXT, true)) {
+        return null;
+    }
+    return $abs;
 }
+
+const MEDIA_COMPANION_EXT = ['bin', 'mtl', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'ktx2', 'tga', 'bmp'];
 
 /**
  * Copia un modelo glTF/OBJ y sus ficheros asociados a una carpeta propia en _sources,
@@ -713,7 +774,7 @@ function media_organize(): array
         }
     }
     foreach (array_keys($copied) as $c) {
-        if (!isset($inDb[realpath($c) ?: $c])) {
+        if (basename($c)[0] !== '.' && !isset($inDb[realpath($c) ?: $c])) {
             @unlink($c);
         }
     }

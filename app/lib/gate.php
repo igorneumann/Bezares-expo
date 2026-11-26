@@ -85,7 +85,8 @@ function gate_expected_htaccess(): ?string
     if ($tpl === false || !str_contains($tpl, '{{GATE}}')) {
         return null;
     }
-    return str_replace('{{GATE}}', gate_htaccess_block(setting('installed') !== '1'), $tpl);
+    $media = preg_replace('~[^A-Za-z0-9_/-]~', '', trim((string)CFG['media_dir'], '/')) ?: 'media';
+    return str_replace(['{{GATE}}', '{{MEDIA}}'], [gate_htaccess_block(setting('installed') !== '1'), $media], $tpl);
 }
 
 /** Escribe /.htaccess desde la plantilla. */
@@ -131,5 +132,34 @@ function gate_sync_htaccess(): void
 function gate_rotate_token(): bool
 {
     set_setting('device_token', random_token(24));
+    // El enlace de autorización cambia también: el antiguo deja de servir.
+    set_setting('gate_key', random_token(16));
     return gate_write_htaccess();
+}
+
+/**
+ * Clave secreta del enlace de autorización (/cookie.html?k=…). No está en el repositorio:
+ * se genera en el servidor la primera vez y cambia al revocar los dispositivos.
+ */
+function gate_key(): string
+{
+    $k = (string)setting('gate_key', '');
+    if (!preg_match('/^[a-f0-9]{32,}$/D', $k)) {
+        $k = random_token(16);
+        set_setting('gate_key', $k);
+    }
+    return $k;
+}
+
+/** Ruta del enlace de autorización (sólo se muestra a los administradores). */
+function gate_link_path(): string
+{
+    return '/cookie.html?k=' . gate_key();
+}
+
+/** ¿Trae la petición la clave correcta del enlace de autorización? */
+function gate_key_valid(): bool
+{
+    $k = $_GET['k'] ?? '';
+    return is_string($k) && $k !== '' && hash_equals(gate_key(), $k);
 }

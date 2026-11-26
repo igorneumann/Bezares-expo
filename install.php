@@ -72,6 +72,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             ->execute([$user, $email, password_hash($pass, PASSWORD_DEFAULT), time()]);
         $uid = (int)$pdo->lastInsertId();
         set_setting('device_token', random_token(24));
+        set_setting('gate_key', random_token(16));
         set_setting('installed', '1');
         // Tablets iniciales 1-7 (como en la web actual), sin productos.
         // El evento inicial lo crea la base de datos (app/lib/db.php).
@@ -123,6 +124,6 @@ button{margin-top:20px;width:100%;padding:12px;border:0;border-radius:8px;backgr
 <label for="m">Email para recuperar la contraseña (vacío = el del usuario)</label><input id="m" type="email" name="email" maxlength="150" value="<?= e($_POST['email'] ?? '') ?>">
 <label for="p">Contraseña (mín. 10 caracteres)</label><input id="p" type="password" name="password" required minlength="10" autocomplete="new-password">
 <label for="p2">Repetir contraseña</label><input id="p2" type="password" name="password2" required minlength="10" autocomplete="new-password">
-<small>Para autorizar cada tablet basta con abrir expo.bezares.com/cookie.html en él.</small>
+<small>El enlace para autorizar los tablets aparecerá en el panel, en Configuración.</small>
 <button type="submit">Instalar</button>
 </form></main></body></html>

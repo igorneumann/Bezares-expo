@@ -100,6 +100,7 @@ function media_payload(): array
 function settings_payload(): array
 {
     return [
+        'gate_link'       => gate_link_path(),
         'frame_origins'   => implode("\n", trusted_frame_origins()),
         'tablet_header'   => tablet_header_mode(),
         'logo_opacity'    => (int)round(logo_opacity() * 100),
@@ -150,7 +151,7 @@ function editor_settings_payload(): array
 // Roles: los editores gestionan contenido (tablets, productos, galería);
 // la configuración, la seguridad y los usuarios son sólo para administradores.
 const ADMIN_ONLY_ACTIONS = ['settings.save', 'languages.save', 'openai.save', 'openai.test', 'ui.translate', 'gate.rotate', 'gate.write', 'security.check',
-                            'cache.purge', 'media.delete_leftovers', 'user.add', 'user.delete', 'user.role'];
+                            'cache.purge', 'media.delete_leftovers', 'user.add', 'user.delete', 'user.role', 'stats.clear'];
 if (in_array($action, ADMIN_ONLY_ACTIONS, true) && !is_admin($user)) {
     log_event('acción denegada ' . $action . ' a ' . $user['username']);
     json_error('Sólo los administradores pueden hacer esto.', 403);
@@ -423,6 +424,13 @@ try {
             $from = in_str($d, 'from', 10) ?: null;
             $to = in_str($d, 'to', 10) ?: null;
             json_out(['ok' => true, 'stats' => stats_summary($ev, $from, $to)]);
+
+        case 'stats.clear':
+            $ev = $d['event'] ?? 'all';
+            $ev = in_array($ev, ['all', 'none'], true) ? $ev : (int)$ev;
+            $n = stats_clear($ev);
+            log_event('estadísticas borradas (' . $ev . '): ' . $n . ' registros, por ' . $user['username']);
+            json_out(['ok' => true, 'deleted' => $n]);
 
         // ---------------- Eventos ----------------
         case 'events.create':

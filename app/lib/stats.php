@@ -14,6 +14,25 @@ defined('APP_DIR') || exit; // no ejecutable directamente
 const STAT_TYPES = ['view', 'wake', 'product', 'swipe', 'more_info', 'newsletter', 'video_fs', 'model_fs', 'lang', 'model_touch'];
 // Lo que cuenta como "interacción" (acciones del visitante; las vistas y el despertar se muestran aparte)
 const STAT_INTERACTIONS = ['product', 'swipe', 'more_info', 'newsletter', 'video_fs', 'model_fs', 'lang', 'model_touch'];
+// Límites: registros por envío (el tablet manda lotes de 200), por tablet y día, y en total por día.
+const STATS_BATCH_MAX = 200;
+const STATS_TABLET_DAY_MAX = 10000;
+const STATS_DAY_MAX = 60000;
+
+/** Borra estadísticas: todas, las de un evento o las de "sin evento". Devuelve cuántas. */
+function stats_clear(int|string $event): int
+{
+    if ($event === 'all') {
+        $n = db()->exec('DELETE FROM stats');
+    } elseif ($event === 'none') {
+        $n = db()->exec('DELETE FROM stats WHERE event_id IS NULL');
+    } else {
+        $st = db()->prepare('DELETE FROM stats WHERE event_id = ?');
+        $st->execute([(int)$event]);
+        $n = $st->rowCount();
+    }
+    return (int)$n;
+}
 
 /** Guarda un lote de registros validados. Devuelve los ids aceptados (nuevos o ya existentes). */
 function stats_record(array $events): array
@@ -22,10 +41,14 @@ function stats_record(array $events): array
     $validEvents = array_flip(array_map('intval', $pdo->query('SELECT id FROM events')->fetchAll(PDO::FETCH_COLUMN)));
     $validTablets = array_flip(array_map('intval', $pdo->query('SELECT number FROM tablets')->fetchAll(PDO::FETCH_COLUMN)));
     $ins = $pdo->prepare('INSERT OR IGNORE INTO stats(id, event_id, tablet, product_id, type, lang, ts, day) VALUES(?,?,?,?,?,?,?,?)');
+    // Topes por día (muy por encima del uso real de una feria) para que nadie pueda llenar el disco.
+    $cntTab = $pdo->prepare('SELECT COUNT(*) FROM stats WHERE day = ? AND tablet = ?');
+    $cntDay = $pdo->prepare('SELECT COUNT(*) FROM stats WHERE day = ?');
+    $perTab = $perDay = [];
     $now = time();
     $accepted = [];
     $pdo->beginTransaction();
-    foreach (array_slice($events, 0, 500) as $e) {
+    foreach (array_slice($events, 0, STATS_BATCH_MAX) as $e) {
         if (!is_array($e)) {
             continue;
         }
@@ -43,7 +66,26 @@ function stats_record(array $events): array
         if ($ts < $now - 60 * 86400 || $ts > $now + 600) {
             $ts = $now;
         }
-        $ins->execute([$id, $ev, $tablet, $pid, $type, $lang, $ts, date('Y-m-d', $ts)]);
+        $day = date('Y-m-d', $ts);
+        $kt = $day . ':' . $tablet;
+        if (!isset($perTab[$kt])) {
+            $cntTab->execute([$day, $tablet]);
+            $perTab[$kt] = (int)$cntTab->fetchColumn();
+        }
+        if (!isset($perDay[$day])) {
+            $cntDay->execute([$day]);
+            $perDay[$day] = (int)$cntDay->fetchColumn();
+        }
+        if ($perTab[$kt] >= STATS_TABLET_DAY_MAX || $perDay[$day] >= STATS_DAY_MAX) {
+            // Se da por recibido para que el tablet no lo reenvíe sin fin.
+            $accepted[] = $id;
+            continue;
+        }
+        $ins->execute([$id, $ev, $tablet, $pid, $type, $lang, $ts, $day]);
+        if ($ins->rowCount() > 0) {
+            $perTab[$kt]++;
+            $perDay[$day]++;
+        }
         $accepted[] = $id;
     }
     $pdo->commit();
@@ -109,8 +151,9 @@ function stats_summary(int|string $event, ?string $from, ?string $to): array
         $byDay[] = ['day' => $r['day'], 'interactions' => (int)$r['inter'], 'views' => (int)$r['views'], 'newsletter' => (int)$r['nl'], 'wake' => (int)$r['wake']];
     }
     $byHour = array_fill(0, 24, 0);
-    foreach ($q("SELECT ts FROM stats$w" . ($w ? ' AND' : ' WHERE') . " type IN ($inList)") as $r) {
-        $byHour[(int)date('G', (int)$r['ts'])]++;
+    // Agrupado por hora en SQLite (no se cargan todos los registros en PHP).
+    foreach ($q("SELECT ts / 3600 h, COUNT(*) c FROM stats$w" . ($w ? ' AND' : ' WHERE') . " type IN ($inList) GROUP BY h") as $r) {
+        $byHour[(int)date('G', (int)$r['h'] * 3600)] += (int)$r['c'];
     }
     $byLang = [];
     foreach ($q("SELECT lang, COUNT(*) c FROM stats$w" . ($w ? ' AND' : ' WHERE') . " type = 'view' AND lang <> '' GROUP BY lang ORDER BY c DESC") as $r) {

@@ -9,7 +9,7 @@ La raíz del repositorio **es** `httpdocs`: Plesk lo despliega tal cual desde Gi
 ```
 / (httpdocs)
   index.php          → página principal y páginas de tablet
-  cookie.php         → atiende /cookie.html: autoriza el tablet y redirige a la portada
+  cookie.php         → atiende /cookie.html?k=<clave>: autoriza el tablet y redirige a la portada
   install.php        → instalador (sólo funciona una vez)
   sw.js              → service worker (caché sin conexión)
   _boot.php          → arranque común (no accesible por web)
@@ -85,10 +85,12 @@ y comprueba que **sin** cookie la página, el panel y un fichero estático redir
 ## Uso diario
 
 ### Autorizar un tablet
-En cada tablet abre **https://expo.bezares.com/cookie.html**: añade la cookie y redirige a la portada automáticamente,
-sin que el usuario tenga que hacer nada. **Cualquiera que conozca esa dirección queda autorizado**, así que no la publiques.
+En cada tablet abre el **enlace de autorización** que aparece en *Configuración > Acceso de dispositivos*
+(`/cookie.html?k=<clave>`): añade la cookie y redirige a la portada automáticamente, sin que el usuario tenga que hacer nada.
+La clave se genera en el servidor y no está en el repositorio; sin ella, `/cookie.html` no autoriza. Quien tenga el enlace
+completo queda autorizado, así que compártelo sólo con el equipo.
 La cookie dura 400 días (máximo permitido por los navegadores). Para revocar todos los tablets:
-*Configuración > Revocar todos los dispositivos* (luego hay que volver a abrir /cookie.html en cada uno). La revocación
+*Configuración > Revocar todos los dispositivos*: el enlace cambia y hay que volver a abrir el nuevo en cada tablet. La revocación
 lanza la verificación de seguridad automáticamente. Los tablets conectados borran su contenido guardado al detectar la
 revocación; sin conexión, el contenido guardado deja de mostrarse a los 7 días de la última autorización confirmada.
 

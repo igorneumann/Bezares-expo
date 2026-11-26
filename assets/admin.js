@@ -1169,16 +1169,16 @@ function infoColorsField(s) {
 
 /** Sitios de confianza que pueden incrustar las páginas públicas en un iframe. */
 function embedCard(s) {
-  const example = () => `<iframe src="https://expo.bezares.com/" style="width:100%;height:100vh;border:0" allow="fullscreen; autoplay; screen-wake-lock"></iframe>`;
+  const example = () => `<iframe src="${location.origin}/" style="width:100%;height:100vh;border:0" allow="fullscreen; autoplay; screen-wake-lock"></iframe>`;
   return h('div', { class: 'card' },
     h('h3', null, 'Incrustación en otras webs (iframe)'),
-    h('p', { class: 'hint' }, 'Webs de confianza que pueden mostrar expo.bezares.com dentro de un iframe (portada, páginas de tablet y panel de administración). '
+    h('p', { class: 'hint' }, 'Webs de confianza que pueden mostrar esta web dentro de un iframe (portada, páginas de tablet y panel de administración). '
       + 'Una por línea, con el formato https://dominio.com (sin ruta). Se admite https://*.dominio.com para todos sus subdominios. '
       + 'Vacío = no se permite incrustar. Añade sólo webs propias: cualquier web de la lista puede mostrar el panel.'),
     h('textarea', { rows: 4, class: 'mono', spellcheck: 'false', placeholder: 'https://cloud.bezares.com', value: s.frame_origins || '',
       oninput: (e) => { s.frame_origins = e.target.value; } }),
     h('p', { class: 'hint' }, 'Dentro de un iframe, la portada abre directamente el panel de administración (o el acceso si no hay sesión). '
-      + 'El dispositivo necesita la cookie de autorización: si no la tiene, usa https://expo.bezares.com/cookie.html como dirección del iframe (autoriza y entra en el panel). Ejemplo:'),
+      + 'El dispositivo necesita la cookie de autorización: si no la tiene, usa como dirección del iframe el enlace de autorización (bloque "Acceso de dispositivos"), que autoriza y entra en el panel; cambia al revocar los dispositivos. Ejemplo sin él:'),
     h('pre', null, example()),
     h('p', { class: 'hint' }, 'Pulsa "Guardar configuración" (arriba) para aplicar los cambios.'));
 }
@@ -1388,9 +1388,13 @@ function renderSettings() {
 
       h('div', { class: 'card' },
         h('h3', null, 'Acceso de dispositivos (cookie)'),
-        h('p', { class: 'hint' }, 'Sin la cookie, cualquier visita se redirige a ', h('code', null, s.redirect_url), '. Para autorizar un tablet basta con abrir ',
-          h('code', null, '/cookie.html'), ' en él: añade la cookie y lleva a la página principal automáticamente.'),
-        h('p', { class: 'hint' }, 'Cualquiera que conozca esa dirección puede autorizarse: no la publiques. Si se difunde, usa "Revocar todos los dispositivos".'),
+        h('p', { class: 'hint' }, 'Sin la cookie, cualquier visita se redirige a ', h('code', null, s.redirect_url), '. Para autorizar un tablet basta con abrir en él este enlace: añade la cookie y lleva a la página principal automáticamente.'),
+        h('div', { class: 'row' },
+          h('input', { class: 'mono grow', readonly: true, value: location.origin + (s.gate_link || ''), onfocus: (e) => e.target.select(), 'aria-label': 'Enlace de autorización' }),
+          h('button', { type: 'button', class: 'btn btn-sm', onclick: async () => {
+            try { await navigator.clipboard.writeText(location.origin + s.gate_link); toast('Enlace copiado', 'ok'); } catch { toast('Selecciona el enlace y cópialo a mano', 'info'); }
+          } }, 'Copiar')),
+        h('p', { class: 'hint' }, 'Sin la clave del final, /cookie.html no autoriza. Quien tenga el enlace completo puede autorizarse: compártelo sólo con el equipo. Si se difunde, usa "Revocar todos los dispositivos": el enlace cambia y el antiguo deja de servir.'),
         h('p', null, 'Estado del .htaccess: ', s.htaccess_ok ? h('span', { class: 'badge badge-ok' }, 'Correcto') : h('span', { class: 'badge badge-err' }, 'No actualizado'),
           ' ', h('button', { class: 'btn btn-sm', onclick: (e) => busy(e.currentTarget, async () => {
             const r = await api('gate.write');
@@ -1399,7 +1403,7 @@ function renderSettings() {
             render();
           }) }, 'Regenerar .htaccess')),
         h('button', { class: 'btn btn-danger btn-sm', onclick: async (e) => {
-          if (!(await confirmBox('Se invalidarán las cookies de TODOS los tablets: habrá que volver a autorizarlos en /cookie.html (los tablets conectados borrarán además su contenido guardado). Este dispositivo se reautoriza automáticamente. ¿Continuar?', 'Revocar', true))) return;
+          if (!(await confirmBox('Se invalidarán las cookies de TODOS los tablets y el enlace de autorización cambiará: habrá que volver a autorizarlos con el enlace nuevo (los tablets conectados borrarán además su contenido guardado). Si una web de confianza incrusta el enlace en un iframe, habrá que cambiarlo allí también. Este dispositivo se reautoriza automáticamente. ¿Continuar?', 'Revocar', true))) return;
           toast('Revocando y verificando la puerta…', 'info', 0);
           const r = await busy(e.currentTarget, () => api('gate.rotate'));
           if (r) {
@@ -1670,6 +1674,14 @@ function renderStats() {
     a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   };
+  const clearStats = async (e) => {
+    const ev = String(f.event);
+    const what = ev === 'all' ? 'TODAS las estadísticas' : ev === 'none' ? 'las estadísticas sin evento asignado'
+      : `las estadísticas del evento «${state.events.find((x) => String(x.id) === ev)?.name || ev}»`;
+    if (!(await confirmBox(`Se borrarán ${what} (sin tener en cuenta las fechas). No se puede deshacer: exporta antes el CSV si lo necesitas. ¿Continuar?`, 'Borrar', true))) return;
+    const r = await busy(e.currentTarget, () => api('stats.clear', { event: f.event }));
+    if (r) { toast(`${num(r.deleted)} registros borrados.`, 'ok'); load(); }
+  };
   const slug = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'feria';
 
   queueMicrotask(load);
@@ -1682,7 +1694,8 @@ function renderStats() {
       h('label', { class: 'field' }, h('span', null, 'Hasta'), to),
       h('div', { class: 'row' },
         h('button', { class: 'btn', onclick: () => load() }, '⟳ Actualizar'),
-        h('button', { class: 'btn', onclick: exportCsv }, 'Exportar CSV'))),
+        h('button', { class: 'btn', onclick: exportCsv }, 'Exportar CSV'),
+        state.role === 'admin' ? h('button', { class: 'btn btn-ghost btn-danger', onclick: clearStats }, 'Borrar estadísticas') : null)),
     out);
 }
 

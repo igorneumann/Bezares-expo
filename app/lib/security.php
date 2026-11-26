@@ -93,7 +93,8 @@ function security_check(): array
     $tests[] = ['Puerta: fichero estático sin cookie (nginx)', parse_url(asset('assets/app.css'), PHP_URL_PATH), false, 'gate'];
     $tests[] = ['Puerta: panel sin cookie', '/admin/', false, 'gate'];
     $tests[] = ['/.well-known accesible sin cookie (SSL)', '/.well-known/expo-check-' . random_token(4), false, 'open'];
-    // /cookie.html no se comprueba: por especificación autoriza y redirige automáticamente.
+    // Sin la clave, /cookie.html no autoriza (con ella sí: no se prueba para no emitir cookies).
+    $tests[] = ['Puerta: /cookie.html sin la clave', '/cookie.html', false, 'gate'];
 
     $checks = [];
     foreach ($tests as [$label, $path, $cookie, $type]) {

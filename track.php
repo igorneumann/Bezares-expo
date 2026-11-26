@@ -16,7 +16,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     json_error('Método no permitido', 405);
 }
 same_origin_or_die();
-if (throttle_exceeded('track:' . client_ip(), 120, 60)) {
+// Un tablet con 2.000 registros pendientes los manda en 10 envíos.
+if (throttle_exceeded('track:' . client_ip(), 30, 60)) {
     json_error('Demasiadas peticiones', 429);
 }
 throttle_hit('track:' . client_ip());

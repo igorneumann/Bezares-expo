@@ -26,10 +26,10 @@ function db(): PDO
 function db_migrate(PDO $pdo): void
 {
     $ver = (int)$pdo->query('PRAGMA user_version')->fetchColumn();
-    if ($ver >= 5) {
+    if ($ver >= 6) {
         return;
     }
-    if ($ver > 0) {
+    if ($ver > 0 && $ver < 5) {
         // Copia de la base de datos antes de cambiar su estructura (no se puede dentro de la transacción).
         $copy = DATA_DIR . '/expo-antes-v5.sqlite';
         try {
@@ -101,6 +101,11 @@ function db_migrate_steps(PDO $pdo): void
     }
     if ($ver < 5) {
         db_migrate_v5($pdo);
+    }
+    if ($ver < 6) {
+        // v6: índice para los topes diarios de estadísticas.
+        $pdo->exec('CREATE INDEX IF NOT EXISTS stats_day_tablet ON stats(day, tablet)');
+        $pdo->exec('PRAGMA user_version = 6');
     }
 }
 

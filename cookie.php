@@ -2,9 +2,10 @@
 declare(strict_types=1);
 
 /*
- * Autorización de dispositivos. Se accede como https://expo.bezares.com/cookie.html
- * (el .htaccess la reescribe aquí): añade la cookie de autorización y redirige a la
- * página principal sin intervención del usuario.
+ * Autorización de dispositivos. Se accede como /cookie.html?k=<clave> (el .htaccess la
+ * reescribe aquí): añade la cookie de autorización y redirige a la página principal sin
+ * intervención del usuario. La clave está sólo en el servidor (el enlace completo aparece
+ * en el panel, Configuración); sin ella, la petición se trata como cualquier visita sin cookie.
  */
 require __DIR__ . '/_boot.php';
 
@@ -26,8 +27,16 @@ if (setting('installed') !== '1') {
     exit;
 }
 
+// Con la clave del enlace se autoriza; un dispositivo ya autorizado sólo renueva su cookie.
+$withKey = gate_key_valid();
+if (!$withKey && !gate_valid()) {
+    header('Location: ' . CFG['redirect_url'], true, 302);
+    exit;
+}
 gate_set_cookie();
-log_event('cookie: dispositivo autorizado (' . substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120) . ')');
+if ($withKey) {
+    log_event('cookie: dispositivo autorizado (' . substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120) . ')');
+}
 // Dentro de un iframe se entra directamente en el panel de administración.
 $framed = ($_SERVER['HTTP_SEC_FETCH_DEST'] ?? '') === 'iframe' || ($_GET['to'] ?? '') === 'admin';
 header('Location: ' . ($framed ? '/admin/' : '/'), true, 302);
