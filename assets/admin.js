@@ -1178,7 +1178,7 @@ function embedCard(s) {
     h('textarea', { rows: 4, class: 'mono', spellcheck: 'false', placeholder: 'https://cloud.bezares.com', value: s.frame_origins || '',
       oninput: (e) => { s.frame_origins = e.target.value; } }),
     h('p', { class: 'hint' }, 'Dentro de un iframe, la portada abre directamente el panel de administración (o el acceso si no hay sesión). '
-      + 'El dispositivo necesita la cookie de autorización: si no la tiene, usa como dirección del iframe el enlace de autorización (bloque "Acceso de dispositivos"), que autoriza y entra en el panel; cambia al revocar los dispositivos. Ejemplo sin él:'),
+      + 'El dispositivo necesita la cookie de autorización: si no la tiene, usa ' + location.origin + '/cookie.html como dirección del iframe (autoriza y entra en el panel). Ejemplo:'),
     h('pre', null, example()),
     h('p', { class: 'hint' }, 'Pulsa "Guardar configuración" (arriba) para aplicar los cambios.'));
 }
@@ -1388,13 +1388,9 @@ function renderSettings() {
 
       h('div', { class: 'card' },
         h('h3', null, 'Acceso de dispositivos (cookie)'),
-        h('p', { class: 'hint' }, 'Sin la cookie, cualquier visita se redirige a ', h('code', null, s.redirect_url), '. Para autorizar un tablet basta con abrir en él este enlace: añade la cookie y lleva a la página principal automáticamente.'),
-        h('div', { class: 'row' },
-          h('input', { class: 'mono grow', readonly: true, value: location.origin + (s.gate_link || ''), onfocus: (e) => e.target.select(), 'aria-label': 'Enlace de autorización' }),
-          h('button', { type: 'button', class: 'btn btn-sm', onclick: async () => {
-            try { await navigator.clipboard.writeText(location.origin + s.gate_link); toast('Enlace copiado', 'ok'); } catch { toast('Selecciona el enlace y cópialo a mano', 'info'); }
-          } }, 'Copiar')),
-        h('p', { class: 'hint' }, 'Sin la clave del final, /cookie.html no autoriza. Quien tenga el enlace completo puede autorizarse: compártelo sólo con el equipo. Si se difunde, usa "Revocar todos los dispositivos": el enlace cambia y el antiguo deja de servir.'),
+        h('p', { class: 'hint' }, 'Sin la cookie, cualquier visita se redirige a ', h('code', null, s.redirect_url), '. Para autorizar un tablet basta con abrir ',
+          h('code', null, '/cookie.html'), ' en él: añade la cookie y lleva a la página principal automáticamente.'),
+        h('p', { class: 'hint' }, 'Cualquiera que conozca esa dirección puede autorizarse: no la publiques. Si se difunde, usa "Revocar todos los dispositivos".'),
         h('p', null, 'Estado del .htaccess: ', s.htaccess_ok ? h('span', { class: 'badge badge-ok' }, 'Correcto') : h('span', { class: 'badge badge-err' }, 'No actualizado'),
           ' ', h('button', { class: 'btn btn-sm', onclick: (e) => busy(e.currentTarget, async () => {
             const r = await api('gate.write');
@@ -1403,7 +1399,7 @@ function renderSettings() {
             render();
           }) }, 'Regenerar .htaccess')),
         h('button', { class: 'btn btn-danger btn-sm', onclick: async (e) => {
-          if (!(await confirmBox('Se invalidarán las cookies de TODOS los tablets y el enlace de autorización cambiará: habrá que volver a autorizarlos con el enlace nuevo (los tablets conectados borrarán además su contenido guardado). Si una web de confianza incrusta el enlace en un iframe, habrá que cambiarlo allí también. Este dispositivo se reautoriza automáticamente. ¿Continuar?', 'Revocar', true))) return;
+          if (!(await confirmBox('Se invalidarán las cookies de TODOS los tablets: habrá que volver a autorizarlos en /cookie.html (los tablets conectados borrarán además su contenido guardado). Este dispositivo se reautoriza automáticamente. ¿Continuar?', 'Revocar', true))) return;
           toast('Revocando y verificando la puerta…', 'info', 0);
           const r = await busy(e.currentTarget, () => api('gate.rotate'));
           if (r) {

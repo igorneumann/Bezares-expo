@@ -8,7 +8,7 @@ todavía una prueba de penetración contra el servidor real (ver "Pendiente" al 
 | Área | Medida |
 |---|---|
 | Acceso a la web | Sin la cookie `expo_device`, todas las peticiones (incluidos medios estáticos) se redirigen a bezares.com desde el `.htaccess`, y además desde PHP. Excepciones: `/.well-known/` (SSL), `/cookie.html` y `/cookie.php`. |
-| Cookie de dispositivo | Token aleatorio de 192 bits, `HttpOnly`, `Secure`, `SameSite=Lax`. Se obtiene **automáticamente** al abrir el enlace de autorización `/cookie.html?k=<clave>` (sin intervención en los tablets). La clave, de 128 bits, se genera en el servidor (no está en el repositorio, que es público), sólo la ven los administradores y cambia al revocar los dispositivos; sin ella `/cookie.html` redirige como cualquier visita sin cookie. |
+| Cookie de dispositivo | Token aleatorio de 192 bits, `HttpOnly`, `Secure`, `SameSite=Lax`. Se obtiene **automáticamente** al abrir `/cookie.html` (decisión del cliente: sin código, para no requerir intervención en los tablets). Se puede revocar para todos los dispositivos. |
 | Estadísticas | `/track.php` exige la cookie, admite 30 envíos por minuto e IP y 200 registros por envío, y como mucho 10.000 registros por tablet y día y 60.000 en total por día. Los administradores pueden borrarlas desde *Estadísticas*. |
 | Modelos 3D | Al empaquetar un glTF/OBJ sólo se aceptan como ficheros asociados buffers, materiales y texturas (nunca ficheros ocultos como `media/.htaccess`), y nunca se borra un fichero oculto. |
 | Caché sin conexión | Si la puerta redirige (cookie revocada), el service worker borra todo lo guardado. Sin conexión, lo guardado sólo se muestra 7 días desde la última autorización confirmada por el servidor (una página o `/ping.php`, nunca un fichero, que podría venir de la caché HTTP). Pasado el plazo no se borra: deja de mostrarse hasta que el servidor confirma. `/ping.php` no devuelve datos. Las páginas abiertas lo comprueban cada 30 min y, si se ha revocado, borran la caché y se recargan. |
@@ -60,7 +60,7 @@ todavía una prueba de penetración contra el servidor real (ver "Pendiente" al 
 
 ## Riesgos residuales / recomendaciones
 
-- **Enlace de autorización**: quien tenga el enlace completo (con la clave) obtiene acceso de dispositivo. Compártelo sólo con el equipo; si se difunde, *Revocar todos los dispositivos* (el enlace cambia). Si una web de confianza lo usa como dirección de un iframe, la clave queda en el código de esa web.
+- **Autorización sin código (decisión del cliente)**: cualquiera que abra `/cookie.html` obtiene acceso de dispositivo, y el repositorio es público. Revocar los dispositivos no lo impide (la misma dirección entrega la cookie nueva). Con ese acceso se ven las páginas de producto y se llega a la pantalla de acceso del panel, que sigue exigiendo contraseña. Los límites de estadísticas acotan el abuso de `/track.php`.
 - **nginx en Plesk**: si "Servir ficheros estáticos directamente mediante nginx" está activo, el `.htaccess` no protege `/media`. Desactívalo. La verificación de seguridad lo detecta.
 - La cookie de dispositivo es la misma para todos los tablets: si se pierde uno, revoca todos. Un tablet desconectado muestra su contenido guardado hasta 7 días; después deja de mostrarlo, pero los ficheros siguen en el almacenamiento del navegador hasta que vuelva a conectarse (y se confirme o se revoque) o se borren sus datos.
 - El bloqueo por intentos fallidos permite a alguien con acceso de dispositivo bloquear temporalmente (15 min) un usuario conociendo su nombre.
@@ -76,8 +76,7 @@ Tras desplegar, comprobar desde un navegador **sin** cookie (ventana privada):
 - `https://expo.bezares.com/` → redirige a bezares.com
 - `https://expo.bezares.com/media/photos/<una-foto>.jpg` → redirige a bezares.com (si se ve la foto, nginx está sirviendo estáticos: ver arriba)
 - `https://expo.bezares.com/.well-known/acme-challenge/x` → 404 del servidor (no redirige)
-- `https://expo.bezares.com/cookie.html` (sin la clave) → redirige a bezares.com
-- El enlace de autorización del panel → autoriza y lleva a la portada (en una ventana privada distinta de la anterior)
+- `https://expo.bezares.com/cookie.html` → autoriza y lleva a la portada (en una ventana privada distinta de la anterior)
 - `https://expo.bezares.com/install.php` → 404
 - `https://expo.bezares.com/.htaccess` y `/_boot.php` → 403/redirección
 - Comprobar las cabeceras en https://securityheaders.com (con un dispositivo autorizado no es posible desde fuera: aceptable que muestre la redirección).

@@ -100,7 +100,6 @@ function media_payload(): array
 function settings_payload(): array
 {
     return [
-        'gate_link'       => gate_link_path(),
         'frame_origins'   => implode("\n", trusted_frame_origins()),
         'tablet_header'   => tablet_header_mode(),
         'logo_opacity'    => (int)round(logo_opacity() * 100),
