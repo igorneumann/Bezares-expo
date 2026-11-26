@@ -19,3 +19,17 @@
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Datos sensibles: nunca al repositorio (es público)
+/cookie.html
+/private/
+.env
+.env.*
+*.sqlite
+*.sqlite-*
+*.db
+*.key
+*.pem
+*.bak
+*.log
+/*.zip
