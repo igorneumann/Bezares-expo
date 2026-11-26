@@ -180,7 +180,7 @@ function asset(string $path): string
  */
 function favicon_links(): string
 {
-    return '<link rel="icon" type="image/svg+xml" href="' . e(asset('assets/logo-expo-light.svg')) . '" media="(prefers-color-scheme: light)">'
+    return '<link rel="icon" type="image/svg+xml" href="' . e(asset('assets/logo-expo.svg')) . '" media="(prefers-color-scheme: light)">'
         . '<link rel="icon" type="image/svg+xml" href="' . e(asset('assets/logo-expo-dark.svg')) . '" media="(prefers-color-scheme: dark)">'
         . '<link rel="alternate icon" type="image/png" href="' . e(asset('assets/icon-250.png')) . '">'
         . '<link rel="apple-touch-icon" href="' . e(asset('assets/icon-250.png')) . '">';
