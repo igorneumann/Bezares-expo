@@ -369,3 +369,6 @@ body.auth { min-height: 100vh; display: grid; place-items: center; padding: 16px
   .preview { position: static; order: -1; }
 }
 .preview [hidden] { display: none !important; }
+
+/* Versión del programa, esquina inferior derecha */
+.app-version { position: fixed; right: 10px; bottom: 6px; z-index: 5; font-size: .72rem; color: var(--muted); pointer-events: none; user-select: none; }

@@ -1,7 +1,8 @@
 <?php
 declare(strict_types=1);
 
-const APP_VERSION = '1.0.0';
+// Versión del programa: app/VERSION (sube 0.1 en cada commit; ver el hook pre-commit).
+define('APP_VERSION', trim((string)@file_get_contents(__DIR__ . '/VERSION')) ?: '1.0');
 define('APP_DIR', __DIR__);
 
 if (!defined('PUBLIC_ROOT')) {

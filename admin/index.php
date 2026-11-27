@@ -102,5 +102,6 @@ $roleLabel = ($user['role'] ?? '') === 'admin' ? 'Administrador' : 'Editor de co
 </div>
 <div id="toast" class="toast" role="status" hidden></div>
 <dialog id="modal" class="modal"><div class="modal-body"></div></dialog>
+<div class="app-version" title="Versión del programa">v<?= e(APP_VERSION) ?></div>
 </body>
 </html>
